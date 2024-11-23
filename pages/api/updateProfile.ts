@@ -1,4 +1,3 @@
-// pages/api/
 import { NextApiRequest, NextApiResponse } from 'next';
 import Airtable from 'airtable';
 import bcrypt from 'bcrypt';
@@ -10,26 +9,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const { userId, userName, email, userAvatar, password } = req.body;
 
     try {
-      // Update user information in Airtable
-      const updates: any = {
-          Email: email,
-          userName,
-          userAvatar,
-      };
+      if (!userId) {
+        return res.status(400).json({ success: false, message: 'User ID is required.' });
+      }
+
+      // Dynamically construct the updates object
+      const updates: any = {};
+
+      if (userName) updates.userName = userName;
+      if (email) updates.Email = email;
+      if (userAvatar) updates.userAvatar = userAvatar;
 
       if (password) {
-        // Hash the new password if provided
+        // Hash the password if provided
         updates.Password = await bcrypt.hash(password, 10); // Hash the password with 10 salt rounds
       }
 
-      await base('userTable').update(userId, updates);
+      // Update the user in Airtable
+      await base('userTable').update(userId, updates );
 
-      res.status(200).json({ success: true, message: 'User updated successfully!' });
+      return res.status(200).json({ success: true, message: 'User updated successfully!' });
     } catch (error) {
-      console.error(error);
-      res.status(500).json({ success: false, message: error});
+      console.error('Error updating user:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error.' + error});
     }
   } else {
-    res.status(405).json({ success: false, message: 'Method not allowed' });
+    return res.status(405).json({ success: false, message: 'Method not allowed' });
   }
 }

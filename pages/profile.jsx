@@ -15,6 +15,7 @@ const Profile = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [userId, setUserId] = useState('');
   const [loading, setLoading] = useState(false);
+  const [image , setImage] = useState('')
 
   useEffect(() => {
     const id = localStorage.getItem('userId');
@@ -28,6 +29,7 @@ const Profile = () => {
       setUser(data.user);
       setName(data.user.userName);
       setEmail(data.user.Email);
+      setImage(data.user.userAvatar[0]?.url)
     };
 
     if (userId) {
@@ -56,26 +58,23 @@ const Profile = () => {
   };
 
   const handleProfileUpdate = async (e) => {
-    setLoading(true)
+    setLoading(true);
     e.preventDefault();
+  
     let imageUrl;
-
-    // Handle image upload if a new image is provided
     if (newImage) {
       imageUrl = await handleImageUpload();
     } else {
-      imageUrl = user.userAvatar; // Keep the old image if no new one is uploaded
+      imageUrl = user?.userAvatar[0]?.url || image; // Default to the existing image
     }
-
-    const updatedUser = {
-      userId,
-      userName: name,
-      email,
-      userAvatar: [{ url: imageUrl }],
-      ...(password && { password }), 
-    };
-
-    // Send updated user info to your API
+  
+    const updatedUser = {};
+    if (name) updatedUser.userName = name;
+    if (email) updatedUser.email = email;
+    if (imageUrl) updatedUser.userAvatar = [{ url: imageUrl }];
+    if (password) updatedUser.password = password;
+    if (userId) updatedUser.userId = userId;
+  
     const response = await fetch(`/api/updateProfile`, {
       method: 'POST',
       headers: {
@@ -83,15 +82,29 @@ const Profile = () => {
       },
       body: JSON.stringify(updatedUser),
     });
-
+  
     if (response.ok) {
       alert('Profile updated successfully!');
+  
+      // Update localStorage with the new values
+      if (updatedUser.userName) {
+        localStorage.setItem('userName', updatedUser.userName);
+      }
+      if (updatedUser.userAvatar?.[0]?.url) {
+        localStorage.setItem('userImage', updatedUser.userAvatar[0].url);
+      }
+  
+      // Update the state with new values
+      setName(updatedUser.userName);
+      setEmail(updatedUser.email);
+      setImage(updatedUser.userAvatar[0]?.url);
     } else {
       alert('Failed to update profile.');
     }
-    setLoading(false)
+  
+    setLoading(false);
   };
-
+  
   return (
     <>
       <Head>
@@ -100,16 +113,23 @@ const Profile = () => {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </Head>
       <div className="flex h-screen">
-        <Sidebar setIsOpen={() => setSidebarOpen(false)} isOpen={isSidebarOpen} />
+      <Sidebar 
+        setIsOpen={() => setSidebarOpen(false)} 
+        isOpen={isSidebarOpen} 
+      />
         <div className="flex-1 flex flex-col w-[80%]">
           <Header toggleSidebar={() => setSidebarOpen(!isSidebarOpen)} />
           <main className="flex-1 overflow-y-auto bg-white p-6">
             <div className="container mx-auto px-4">
               <h4 className="my-5">My Information</h4>
               <form onSubmit={handleProfileUpdate} className="space-y-4">
-                  {user?.userAvatar ? (
-                    <img src={user.userAvatar} alt="Profile" className="mt-2 h-24 w-24 object-cover" />
-                  ) : 
+              {(user?.userAvatar?.[0]?.url || image) && (
+                <img
+                  src={user?.userAvatar?.[0]?.url || image} 
+                  alt="Profile" 
+                  className="mt-2 h-24 w-24 object-cover" 
+                />
+              )}
                   <div className='w-[91%]'>
                   <label className="block text-sm font-medium">Profile Image</label>
                   <div className="flex items-center justify-center w-full border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-blue-500 transition-colors duration-300 cursor-pointer">
@@ -126,7 +146,6 @@ const Profile = () => {
                   </label>
                 </div>
               </div>
-                  }
 
                 <div className="flex space-x-4">
                   <div className='w-[45%]'>

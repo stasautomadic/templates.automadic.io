@@ -307,10 +307,29 @@ const SponsorsPage = () => {
       let imageUrl = PLACEHOLDER_IMAGE;
 
       // If there's a new image to upload, upload it first
-      if (partnerImage) {
+      if (partnerImage || selectedPartener.logo) {
         const formData = new FormData();
-        formData.append('file', partnerImage);
-    
+
+        if (partnerImage) {
+            console.log('Partner Image:', partnerImage);
+            formData.append('file', partnerImage);
+        } else if (selectedPartener.logo && selectedPartener.logo !== 'undefined') {
+            console.log('Fetching logo from URL:', selectedPartener.logo);
+
+            // Fetch and convert the logo to a File object
+            const response = await fetch(selectedPartener.logo);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch logo: ${response.statusText}`);
+            }
+
+            const blob = await response.blob();
+            const file = new File([blob], 'logo.jpg', { type: blob.type });
+            console.log('Fetched file:', file);
+            formData.append('file', file);
+        } else {
+            console.error('No valid partner image or logo URL provided.');
+        }
+
         const uploadResponse = await fetch('/api/upload', {
             method: 'POST',
             body: formData,

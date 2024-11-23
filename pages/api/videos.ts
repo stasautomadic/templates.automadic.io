@@ -27,8 +27,8 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
       .then(async (renders) => {
         const render = renders[0];
 
-        const records = await base('videos').create([
-          { fields: { Name: render.url, URL: render.url, User: [userId] , templateNames: templateNames } },
+        const records = await base('incomingVideoJobs').create([
+          { fields: { finished_URL_AWS: render.url, userID: [userId] , renderStatus: 'ready to download' ,templateName: templateNames , creatomateTemplateName: templateNames } },
         ]);
       
         res.status(200).json(render);

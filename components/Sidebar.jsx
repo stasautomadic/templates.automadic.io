@@ -7,7 +7,7 @@ import { AiOutlineHome } from "react-icons/ai";
 import { useEffect, useState } from 'react';
 import { GoSponsorTiers } from "react-icons/go";
 
-const Sidebar = ({setIsOpen , isOpen }) => {
+const Sidebar = ({setIsOpen , isOpen , avatar = null}) => {
   const router = useRouter();
   const [userAvatar, setUserAvatar] = useState('');
   const [userName, setUserName] = useState('');
@@ -17,7 +17,7 @@ const Sidebar = ({setIsOpen , isOpen }) => {
     const storedUserName = localStorage.getItem('userName');
 
     // Set userAvatar to an empty string if it's "null" or null
-    setUserAvatar(storedUserAvatar === 'null' ? '' : storedUserAvatar || '');
+    setUserAvatar(avatar ? avatar : storedUserAvatar === 'null' ? '' : storedUserAvatar || '');
     setUserName(storedUserName || '');
   }, []);
 
@@ -32,10 +32,6 @@ const Sidebar = ({setIsOpen , isOpen }) => {
   const closeSidebar = () => {
     setIsOpen()
   };
-
-
-
-
 
   return (
     <div 
@@ -77,19 +73,18 @@ const Sidebar = ({setIsOpen , isOpen }) => {
   
         <nav className="flex flex-col space-y-6 px-6">
   {[
-    { icon: <AiOutlineHome className='text-xl w-[20px] text-gray-400'/>, label: 'Templates' },
-    { icon: <GoCommentDiscussion className='text-xl w-[20px] text-gray-400'/>, label: 'Media' },
-    { icon: <CiBellOn className='text-xl w-[20px] text-gray-400'/>, label: 'Datahub' },
-    { icon: <GoSponsorTiers className='text-xl w-[20px] text-gray-400'/>, label: 'Sponsors' },
-    { icon: <CiUser className='text-xl w-[20px] text-gray-400'/>, label: 'Profile' },
-    { icon: <CiUser className='text-xl w-[20px] text-gray-400'/>, label: 'Werberechte' }
+    { label: 'Templates' },
+    { label: 'Media' },
+    { label: 'Datahub' },
+    { label: 'Sponsors' },
+    { label: 'Profile' },
+    { label: 'Werberechte' }
   ].map((item, index) => (
     <Link
       href={item.label === 'Templates' ? '/' : `/${item.label.toLowerCase()}`}
       key={index}
     >
       <div className="flex items-center space-x-2 py-2 hover:bg-gray-800 px-2 rounded transition">
-        {item.icon}
         <span className="text-gray-300 text-lg">
           {item.label}
         </span>
@@ -97,6 +92,10 @@ const Sidebar = ({setIsOpen , isOpen }) => {
     </Link>
   ))}
 </nav>
+
+
+
+
       </div>
   
 

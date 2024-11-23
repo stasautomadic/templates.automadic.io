@@ -125,10 +125,10 @@ const Media = () => {
                 return { records: [], hasMore: false };
             }
 
-            const filterFormula = encodeURIComponent(`{userID (from User)} = '${userID}'`);
+            const filterFormula = encodeURIComponent(`{userID (from userID)} = '${userID}'`);
             const offset = page > 1 ? `&offset=${(page - 1) * pageSize}` : '';
             
-            const url = `${API_URL}tbl0NGkSnKVC2pZsI?maxRecords=${pageSize}${offset}&filterByFormula=${filterFormula}&sort[0][field]=created&sort[0][direction]=desc`;
+            const url = `${API_URL}tblWEuXbE96RagR0E?maxRecords=${pageSize}${offset}&filterByFormula=${filterFormula}`;
 
             const response = await fetch(url, {
                 headers: {
@@ -143,11 +143,11 @@ const Media = () => {
             const data = await response.json();
             const dataArr = data.records
                 .map((record) => {
-                    if (record?.fields?.URL) {
+                    if (record?.fields?.finished_URL_AWS) {
                         return {
-                            url: record.fields.URL,
-                            templateNames: record.fields.templateNames,
-                            created_at: new Date(record.fields.created),
+                            url: record.fields.finished_URL_AWS,
+                            templateNames: record.fields.creatomateTemplateName,
+                            created_at: new Date(record.fields.createdTime),
                         };
                     }
                     return null;

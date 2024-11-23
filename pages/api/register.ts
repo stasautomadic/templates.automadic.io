@@ -6,10 +6,10 @@ import jwt from 'jsonwebtoken';
 const base = new Airtable({ apiKey: process.env.NEXT_PUBLIC_AIRTABLE_API_KEY }).base(process.env.NEXT_PUBLIC_AIRTABLE_BASE_ID!);
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const { email, password } = req.body;
+  const { name , email, password } = req.body;
 
-  if (!email || !password) {
-    return res.status(400).json({ success: false, message: 'Email and password are required' });
+  if (!email || !password || !name) {
+    return res.status(400).json({ success: false, message: 'All fiealds are required' });
   }
 
   try {
@@ -27,7 +27,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Create a new user in Airtable with the hashed password
     const records = await base('userTable').create([
-      { fields: { Email: email, Password: hashedPassword } },
+      { fields: { Email: email, Password: hashedPassword , userName: name } },
     ]);
 
     const jwtSecret = process.env.NEXT_PUBLIC_JWT_SECRET!;
