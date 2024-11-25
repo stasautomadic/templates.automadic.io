@@ -31,68 +31,11 @@ const MediaItem = ({ medi, index, moveItem }) => {
         dragRef(node);
     };
 
-<<<<<<< HEAD
     // Add device detection
-=======
-    const handleShare = async (url) => {
-        try {
-            // First fetch the video
-            const response = await fetch(url);
-            const blob = await response.blob();
-            
-            // Create a File object from the blob
-            const file = new File([blob], `${medi.templateNames}.mp4`, {
-                type: 'video/mp4'
-            });
-
-            // Check if the device supports sharing
-            if (navigator.share && navigator.canShare({ files: [file] })) {
-                try {
-                    await navigator.share({
-                        files: [file],
-                        title: medi.templateNames,
-                    });
-                    console.log('Shared successfully');
-                } catch (error) {
-                    if (error.name !== 'AbortError') {
-                        console.error('Error sharing:', error);
-                        // Fallback to normal download if sharing fails
-                        handleDownload(url);
-                    }
-                }
-            } else {
-                // Fallback for devices that don't support sharing
-                handleDownload(url);
-            }
-        } catch (error) {
-            console.error('Error preparing file:', error);
-        }
-    };
-
-    const handleDownload = async (url) => {
-        try {
-            const response = await fetch(url);
-            const blob = await response.blob();
-            const blobUrl = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = blobUrl;
-            link.download = `${medi.templateNames}.mp4`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            window.URL.revokeObjectURL(blobUrl);
-        } catch (error) {
-            console.error('Download failed:', error);
-        }
-    };
-
-    // Add this function to check if it's a mobile device
->>>>>>> e4ac3b22c094014e3c0d275fe669d8ffb70275ee
     const isMobileDevice = () => {
         return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     };
 
-<<<<<<< HEAD
     // Handle download for desktop
     const handleDownload = async () => {
         const response = await fetch(medi.url);
@@ -126,8 +69,6 @@ const MediaItem = ({ medi, index, moveItem }) => {
         }
     };
 
-=======
->>>>>>> e4ac3b22c094014e3c0d275fe669d8ffb70275ee
     return (
         <div 
             ref={dropRef}
@@ -183,7 +124,6 @@ const MediaItem = ({ medi, index, moveItem }) => {
                     >
                         Preview
                     </button>
-<<<<<<< HEAD
 
                     {!isMobileDevice() ? (
                         <button 
@@ -195,21 +135,6 @@ const MediaItem = ({ medi, index, moveItem }) => {
                     ) : (
                         <button 
                             onClick={handleShare}
-=======
-                    
-                    {!isMobileDevice() && (
-                        <button 
-                            onClick={() => handleDownload(medi.url)}
-                            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                        >
-                            Download
-                        </button>
-                    )}
-
-                    {isMobileDevice() && (
-                        <button 
-                            onClick={() => handleShare(medi.url)}
->>>>>>> e4ac3b22c094014e3c0d275fe669d8ffb70275ee
                             className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
                         >
                             Share
