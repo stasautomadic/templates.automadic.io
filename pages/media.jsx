@@ -6,6 +6,7 @@ import withAuth from '@/components/withAuth';
 import Header from '@/components/Header';
 import Sidebar from '@/components/Sidebar';
 import styles from '@/styles/Home.module.css';
+import JSZip from 'jszip';
 
 const MediaItem = ({ medi, index, moveItem }) => {
     const [{ isDragging }, dragRef] = useDrag({
@@ -28,6 +29,63 @@ const MediaItem = ({ medi, index, moveItem }) => {
 
     const dragHandleRef = (node) => {
         dragRef(node);
+    };
+
+    const handleShare = async (url) => {
+        try {
+            // First fetch the video
+            const response = await fetch(url);
+            const blob = await response.blob();
+            
+            // Create a File object from the blob
+            const file = new File([blob], `${medi.templateNames}.mp4`, {
+                type: 'video/mp4'
+            });
+
+            // Check if the device supports sharing
+            if (navigator.share && navigator.canShare({ files: [file] })) {
+                try {
+                    await navigator.share({
+                        files: [file],
+                        title: medi.templateNames,
+                    });
+                    console.log('Shared successfully');
+                } catch (error) {
+                    if (error.name !== 'AbortError') {
+                        console.error('Error sharing:', error);
+                        // Fallback to normal download if sharing fails
+                        handleDownload(url);
+                    }
+                }
+            } else {
+                // Fallback for devices that don't support sharing
+                handleDownload(url);
+            }
+        } catch (error) {
+            console.error('Error preparing file:', error);
+        }
+    };
+
+    const handleDownload = async (url) => {
+        try {
+            const response = await fetch(url);
+            const blob = await response.blob();
+            const blobUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = `${medi.templateNames}.mp4`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(blobUrl);
+        } catch (error) {
+            console.error('Download failed:', error);
+        }
+    };
+
+    // Add this function to check if it's a mobile device
+    const isMobileDevice = () => {
+        return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     };
 
     return (
@@ -73,7 +131,7 @@ const MediaItem = ({ medi, index, moveItem }) => {
                     </div>
                     <div className="mt-1 flex items-center text-sm text-gray-500">
                         <span>Created {medi.created_at.toLocaleDateString()}</span>
-                        <span className="mx-2">•</span>
+                        <span className="mx-2"></span>
                         <span>By {localStorage.getItem('userName')}</span>
                     </div>
                 </div>
@@ -85,6 +143,24 @@ const MediaItem = ({ medi, index, moveItem }) => {
                     >
                         Preview video
                     </button>
+                    
+                    {!isMobileDevice() && (
+                        <button 
+                            onClick={() => handleDownload(medi.url)}
+                            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                        >
+                            Download
+                        </button>
+                    )}
+
+                    {isMobileDevice() && (
+                        <button 
+                            onClick={() => handleShare(medi.url)}
+                            className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                            Share
+                        </button>
+                    )}
                 </div>
             </li>
         </div>
@@ -221,6 +297,26 @@ const Media = () => {
     const setIsOpen = () => {
         setSidebarOpen(false);
     };
+
+    async function downloadMediaAsZip(urls) {
+        const zip = new JSZip();
+        
+        const downloads = urls.map(async (url, index) => {
+            const response = await fetch(url);
+            const blob = await response.blob();
+            zip.file(`media_${index + 1}.mp4`, blob);
+        });
+        
+        await Promise.all(downloads);
+        
+        const zipBlob = await zip.generateAsync({type: 'blob'});
+        const zipUrl = window.URL.createObjectURL(zipBlob);
+        const link = document.createElement('a');
+        link.href = zipUrl;
+        link.download = 'media_files.zip';
+        link.click();
+        window.URL.revokeObjectURL(zipUrl);
+    }
 
     return (
         <div>
