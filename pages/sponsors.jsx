@@ -602,23 +602,30 @@ const SponsorsPage = () => {
               {/* Sponsors List Tab */}
               {activeTab === 'sponsors' && (
                 <div className="mt-[3rem]">
-                  {/* Search Bar */}
-                  <div className="flex items-center space-x-4 mb-4">
-                    <input
-                      type="text"
-                      placeholder="Type here to search for a Sponsor"
-                      className="border rounded-full p-3 w-[80%] mt-4 mb-[2rem]"
-                      value={searchTerm}
-                      onChange={(e) => {
-                        setSearchTerm(e.target.value)
-                        setPage(1);
-                      }}
-                    />
+                  {/* Modern Search and Add Section */}
+                  <div className="flex items-center justify-between gap-4 my-6">
+                    <div className="relative flex-1">
+                      <input
+                        type="text"
+                        placeholder="Type here to search for a Sponsor"
+                        className="w-full px-4 py-3 pl-11 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none shadow-sm"
+                        onChange={(e) => handleSearch(e.target.value)}
+                      />
+                      <div className="absolute left-3 top-1/2 -translate-y-1/2">
+                        <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                      </div>
+                    </div>
+
                     <button
-                      onClick={handleCreate}
-                      className="text-white bg-gradient-to-r from-blue-500 via-blue-600 to-blue-700 hover:bg-gradient-to-br focus:ring-4 focus:outline-none focus:ring-blue-300 dark:focus:ring-blue-800 shadow-lg shadow-blue-500/50 dark:shadow-lg dark:shadow-blue-800/80 font-medium rounded-lg text-lg px-5 py-2.5 text-center"
+                      onClick={() => setShowAddSponsorModal(true)}
+                      className="whitespace-nowrap flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-all shadow-sm"
                     >
-                      + Sponsor hinzufügen
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                      </svg>
+                      Sponsor hinzufügen
                     </button>
                   </div>
 
