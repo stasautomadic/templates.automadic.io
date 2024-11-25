@@ -30,6 +30,44 @@ const MediaItem = ({ medi, index, moveItem }) => {
         dragRef(node);
     };
 
+    // Add device detection
+    const isMobileDevice = () => {
+        return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    };
+
+    // Handle download for desktop
+    const handleDownload = async () => {
+        const response = await fetch(medi.url);
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = medi.templateNames || 'download';
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+    };
+
+    // Updated mobile share handler to use native share sheet
+    const handleShare = async () => {
+        try {
+            // Use Web Share API which will show native iOS share sheet
+            if (navigator.share) {
+                const response = await fetch(medi.url);
+                const blob = await response.blob();
+                const file = new File([blob], `${medi.templateNames || 'video'}.mp4`, { type: blob.type });
+                
+                await navigator.share({
+                    files: [file],
+                    title: medi.templateNames,
+                });
+            }
+        } catch (error) {
+            console.error('Error sharing:', error);
+        }
+    };
+
     return (
         <div 
             ref={dropRef}
@@ -78,13 +116,29 @@ const MediaItem = ({ medi, index, moveItem }) => {
                     </div>
                 </div>
 
-                <div className='flex items-center gap-3 ml-auto'>
-                    <button
-                        onClick={() => window.open(medi.url, "_blank")}
-                        className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                <div className="flex items-center gap-3 mt-4">
+                    <button 
+                        onClick={() => window.open(medi.url, '_blank')}
+                        className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
                     >
-                        Preview video
+                        Preview
                     </button>
+
+                    {!isMobileDevice() ? (
+                        <button 
+                            onClick={handleDownload}
+                            className="px-4 py-2 text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors"
+                        >
+                            Download
+                        </button>
+                    ) : (
+                        <button 
+                            onClick={handleShare}
+                            className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                            Share
+                        </button>
+                    )}
                 </div>
             </li>
         </div>
