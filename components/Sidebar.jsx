@@ -34,7 +34,7 @@ const Sidebar = ({setIsOpen , isOpen , avatar = null}) => {
   };
 
   const menuItems = [
-    { name: 'Templates', href: '/templates' },
+    { name: 'Templates', href: '/' },
     { name: 'Media', href: '/media' },
     { name: 'Datahub', href: '/datahub' },
     { name: 'Sponsors', href: '/sponsors' },
