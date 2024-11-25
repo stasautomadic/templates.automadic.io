@@ -33,6 +33,15 @@ const Sidebar = ({setIsOpen , isOpen , avatar = null}) => {
     setIsOpen()
   };
 
+  const menuItems = [
+    { name: 'Templates', href: '/templates' },
+    { name: 'Media', href: '/media' },
+    { name: 'Datahub', href: '/datahub' },
+    { name: 'Sponsors', href: '/sponsors' },
+    { name: 'Werberechte', href: '/werberechte' },
+    { name: 'Profile', href: '/profile' }
+  ];
+
   return (
     <div 
       className={`bg-[#0F172A] shadow-md h-screen w-64 text-black flex flex-col justify-between fixed z-20 transition-transform duration-300 transform ${
@@ -72,23 +81,13 @@ const Sidebar = ({setIsOpen , isOpen , avatar = null}) => {
         </div>
   
         <nav className="flex flex-col space-y-6 px-6">
-  {[
-    { label: 'Templates' },
-    { label: 'Media' },
-    { label: 'Datahub' },
-    { label: 'Sponsors' },
-    { label: 'Profile' },
-    { label: 'Werberechte' }
-  ].map((item, index) => (
-    <Link
-      href={item.label === 'Templates' ? '/' : `/${item.label.toLowerCase()}`}
-      key={index}
+  {menuItems.map((item) => (
+    <Link 
+      key={item.name} 
+      href={item.href}
+      className="px-4 py-2 text-gray-300 hover:text-white transition-colors"
     >
-      <div className="flex items-center space-x-2 py-2 hover:bg-gray-800 px-2 rounded transition">
-        <span className="text-gray-300 text-lg">
-          {item.label}
-        </span>
-      </div>
+      {item.name}
     </Link>
   ))}
 </nav>
@@ -102,16 +101,14 @@ const Sidebar = ({setIsOpen , isOpen , avatar = null}) => {
 
 
 
-      {/* Logout Button */}
-      <div className="px-6 py-6">
-        <div className="w-[60%]">
-          <button
-            className="w-full text-white bg-gradient-to-r from-blue-500 via-blue-600 to-blue-700 hover:bg-gradient-to-br focus:ring-4 focus:outline-none focus:ring-blue-300 dark:focus:ring-blue-800 shadow-lg shadow-blue-500/50 dark:shadow-lg dark:shadow-blue-800/80 font-medium rounded-lg text-lg px-5 py-2.5 text-center"
-            onClick={handleLogout}
-          >
-            Log out
-          </button>
-        </div>
+      {/* Bottom section with logout button */}
+      <div className="p-4 mt-auto border-t border-gray-700">
+        <button
+          onClick={handleLogout}
+          className="w-full px-4 py-3 rounded-lg font-medium text-gray-200 border border-gray-500 hover:border-gray-300 hover:text-white transition-all bg-transparent"
+        >
+          Log out
+        </button>
       </div>
     </div>
   );
