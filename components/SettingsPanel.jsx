@@ -562,7 +562,7 @@ export const SettingsPanel = (props) => {
         }
     };
 
-
+    // handle sponsor logo
     const handleSponsors = async (event, n) => {
         if (!n?.image) {
             setSponsorLogo('');
