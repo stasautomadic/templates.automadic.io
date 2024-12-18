@@ -7,6 +7,8 @@ export const CreateButton = (props) => {
   const [isRendering, setIsRendering] = useState(false);
   const [render, setRender] = useState();
 
+  console.log(props)
+
   const userId = localStorage.getItem('userId');
 
   if (isRendering) {
@@ -42,7 +44,7 @@ export const CreateButton = (props) => {
 
         try {
         
-          const render = await finishVideo(props.preview, userId , props.templateNames);
+          const render = await finishVideo(props.preview, userId , props.templateNames , props.additionalPreviewRefs);
           console.log(render.status)
           if (render.status == "succeeded") {
             setRender(render);

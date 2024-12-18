@@ -3,22 +3,21 @@ import React, { useEffect, useState } from 'react';
 import Head from 'next/head';
 import Header from '@/components/Header';
 import Sidebar from '@/components/Sidebar';
-import { FaUpload } from 'react-icons/fa';
-import { toast } from 'react-hot-toast';
+import { FaUpload, FaUser } from 'react-icons/fa';
+import { Switch, FormControlLabel } from '@mui/material';
 
 const Profile = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [user, setUser] = useState(null);
   const [newImage, setNewImage] = useState(null);
-  const [selectedFileName, setSelectedFileName] = useState('');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [userId, setUserId] = useState('');
   const [loading, setLoading] = useState(false);
-  const [image, setImage] = useState('');
   const [previewImage, setPreviewImage] = useState(null);
+  const [notifyOnFileReady, setNotifyOnFileReady] = useState(false);
 
   useEffect(() => {
     const id = localStorage.getItem('userId');
@@ -29,30 +28,17 @@ const Profile = () => {
     const fetchUserProfile = async () => {
       const response = await fetch(`/api/user/${userId}`);
       const data = await response.json();
+      console.log(data)
       setUser(data.user);
       setName(data.user.userName);
       setEmail(data.user.Email);
-      setImage(data.user.userAvatar[0]?.url);
+      setNotifyOnFileReady(data.user.email_notification_status === 'yes' || false);
     };
 
     if (userId) {
       fetchUserProfile();
     }
   }, [userId]);
-
-  const handleFileChange = (e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setNewImage(file);
-      setSelectedFileName(file.name);
-      
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreviewImage(reader.result);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
 
   const handleImageUpload = async () => {
     if (!newImage) return;
@@ -66,66 +52,98 @@ const Profile = () => {
     });
 
     if (!response.ok) {
-      console.log(response);
+      console.log(response)
     }
 
     const data = await response.json();
-    return data.image_url;
+    return data.image_url; // Return the uploaded image URL
+  };
+
+  const handleImageChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setNewImage(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPreviewImage(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleProfileUpdate = async (e) => {
-    setLoading(true);
+    setLoading(true)
     e.preventDefault();
-
     let imageUrl;
-    if (newImage) {
-      imageUrl = await handleImageUpload(e);
-    } else {
-      imageUrl = user?.userAvatar[0]?.url || image;
-    }
 
-    const updatedUser = {};
-    if (name) updatedUser.userName = name;
-    if (email) updatedUser.email = email;
-    if (imageUrl) updatedUser.userAvatar = [{ url: imageUrl }];
-    if (password) updatedUser.password = password;
-    if (userId) updatedUser.userId = userId;
-
-    const response = await fetch(`/api/updateProfile`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(updatedUser),
-    });
-
-    if (response.ok) {
-      if (updatedUser.userAvatar?.[0]?.url) {
-        setImage(updatedUser.userAvatar[0].url);
-        localStorage.setItem('userImage', updatedUser.userAvatar[0].url);
-        
-        setUser(prev => ({
-          ...prev,
-          userAvatar: [{ url: updatedUser.userAvatar[0].url }]
-        }));
-
-        const imageUpdateEvent = new CustomEvent('profileImageUpdate', {
-          detail: { newImageUrl: updatedUser.userAvatar[0].url }
-        });
-        window.dispatchEvent(imageUpdateEvent);
+    try {
+      // Handle image upload if a new image is provided
+      if (newImage) {
+        imageUrl = await handleImageUpload();
+      } else {
+        imageUrl = user?.userAvatar?.[0]?.url; // Keep the old image if no new one is uploaded
       }
 
-      if (updatedUser.userName) {
-        localStorage.setItem('userName', updatedUser.userName);
+      const updatedUser = {
+        userId,
+        userName: name,
+        email,
+        userAvatar: [{ url: imageUrl }],
+        notifyOnFileReady,
+        ...(password && { password }), 
+      };
+
+      // Send updated user info to your API
+      const response = await fetch(`/api/updateProfile`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updatedUser),
+      });
+
+      if (response.ok) {
+        alert('Profile updated successfully!');
+      } else {
+        alert('Failed to update profile.');
       }
-
-      alert('Profile updated successfully!');
-    } else {
-      alert('Failed to update profile.');
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      alert('An error occurred while updating your profile.');
+    } finally {
+      setLoading(false);
     }
+  };
 
-    setLoading(false);
-    setPreviewImage(null);
+  const updateAirtableNotificationStatus = async (status) => {
+    try {
+      const response = await fetch('/api/update-notification-status', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          recordId: userId,
+          status: status ? 'yes' : 'no',
+          tableId: 'tblgFvFQncHu24c9m',
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to update notification status');
+      }
+    } catch (error) {
+      console.error('Error updating notification status:', error);
+      // Revert the switch if the update fails
+      setNotifyOnFileReady(!status);
+    }
+  };
+
+  const handleNotificationChange = (e) => {
+    const newStatus = e.target.checked;
+    setNotifyOnFileReady(newStatus);
+    updateAirtableNotificationStatus(newStatus);
   };
 
   return (
@@ -137,122 +155,124 @@ const Profile = () => {
       </Head>
       <div className="flex h-screen bg-gray-50">
         <Sidebar setIsOpen={() => setSidebarOpen(false)} isOpen={isSidebarOpen} />
-        <div className="flex-1 flex flex-col w-[80%]">
+        <div className="flex-1 flex flex-col">
           <Header toggleSidebar={() => setSidebarOpen(!isSidebarOpen)} />
-          <main className="flex-1 overflow-y-auto p-6 bg-gray-50">
+          <main className="mt-[3rem] md:mt-0 flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
             <div className="max-w-4xl mx-auto">
-              <div className="bg-white rounded-2xl shadow-sm p-8">
-                <h2 className="text-2xl font-semibold text-gray-800 mb-6">Profile Settings</h2>
-                
-                <form onSubmit={handleProfileUpdate} className="space-y-8">
-                  {/* Profile Image Section */}
-                  <div className="flex items-start space-x-8">
-                    {/* Current/Preview Image */}
-                    <div className="flex-shrink-0">
-                      <div className="relative group">
+              <div className="bg-white rounded-lg shadow-md p-6 sm:p-8">
+                <h2 className="text-2xl font-bold text-gray-900 mb-6">My Profile</h2>
+                <form onSubmit={handleProfileUpdate} className="space-y-6">
+                  <div className="flex flex-col items-center mb-6">
+                    <div className="relative group">
+                      {(previewImage || user?.userAvatar?.[0]?.url) ? (
                         <img
-                          src={previewImage || user?.userAvatar?.[0]?.url || image || '/default-avatar.png'}
+                          src={previewImage || user?.userAvatar?.[0]?.url}
                           alt="Profile"
-                          className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-md"
+                          className="h-32 w-32 rounded-full object-cover border-4 border-white shadow-lg"
                         />
-                      </div>
-                    </div>
-
-                    {/* Upload Section */}
-                    <div className="flex-1">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Profile Photo</label>
-                      <div className="relative">
-                        <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 transition-all hover:border-blue-500 bg-gray-50 hover:bg-gray-50/80">
-                          <input
-                            type="file"
-                            onChange={handleFileChange}
-                            className="hidden"
-                            id="image-upload"
-                            accept="image/*"
-                          />
-                          <label htmlFor="image-upload" className="flex flex-col items-center cursor-pointer">
-                            <div className="p-4 rounded-full bg-blue-50 mb-4">
-                              <FaUpload className="w-6 h-6 text-blue-500" />
-                            </div>
-                            {selectedFileName ? (
-                              <div className="text-center">
-                                <span className="text-sm font-medium text-gray-900">{selectedFileName}</span>
-                                <span className="block text-xs text-gray-500 mt-1">Click to change</span>
-                              </div>
-                            ) : (
-                              <>
-                                <span className="text-sm font-medium text-gray-700">Drop your image here</span>
-                                <span className="text-xs text-gray-500 mt-1">or click to browse</span>
-                              </>
-                            )}
-                          </label>
+                      ) : (
+                        <div className="h-32 w-32 rounded-full bg-gray-200 flex items-center justify-center">
+                          <FaUser className="h-16 w-16 text-gray-400" />
                         </div>
-                      </div>
+                      )}
+                      <label
+                        htmlFor="image-upload"
+                        className="absolute inset-0 flex items-center justify-center rounded-full bg-black bg-opacity-50 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                      >
+                        <FaUpload className="h-8 w-8 text-white" />
+                      </label>
+                      <input
+                        type="file"
+                        id="image-upload"
+                        onChange={handleImageChange}
+                        accept="image/*"
+                        className="hidden"
+                      />
                     </div>
+                    <p className="mt-2 text-sm text-gray-500">Click to upload new profile picture</p>
                   </div>
 
-                  {/* Form Fields */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <label className="block text-sm font-medium text-gray-700">Name</label>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
                       <input
                         type="text"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         required
-                        className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-gray-50 hover:bg-white focus:bg-white"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                       />
                     </div>
 
-                    <div className="space-y-2">
-                      <label className="block text-sm font-medium text-gray-700">Email</label>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                       <input
                         type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         required
-                        className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-gray-50 hover:bg-white focus:bg-white"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                       />
                     </div>
 
-                    <div className="space-y-2">
-                      <label className="block text-sm font-medium text-gray-700">New Password</label>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
                       <input
                         type="password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-gray-50 hover:bg-white focus:bg-white"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                       />
                     </div>
 
-                    <div className="space-y-2">
-                      <label className="block text-sm font-medium text-gray-700">Confirm Password</label>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
                       <input
                         type="password"
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
-                        className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-gray-50 hover:bg-white focus:bg-white"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                       />
                     </div>
                   </div>
 
-                  {/* Submit Button */}
-                  <div className="flex justify-end pt-6">
+                  <div className="flex items-center justify-between py-4 border-t border-gray-200">
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={notifyOnFileReady}
+                          onChange={handleNotificationChange}
+                          color="primary"
+                        />
+                      }
+                      label={
+                        <div className="flex flex-col ml-2">
+                          <span className="text-sm font-medium text-gray-700">Email Notifications</span>
+                          <span className="text-sm text-gray-500">Get notified when files are ready to download</span>
+                        </div>
+                      }
+                      className="m-0"
+                    />
+                  </div>
+
+                  <div className="flex justify-end mt-6">
                     <button
                       type="submit"
                       disabled={loading}
-                      className="px-8 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:ring-4 focus:ring-blue-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                      className={`px-6 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all ${
+                        loading ? 'opacity-75 cursor-not-allowed' : ''
+                      }`}
                     >
                       {loading ? (
-                        <>
-                          <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <span className="flex items-center">
+                          <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                           </svg>
-                          <span>Updating...</span>
-                        </>
+                          Updating...
+                        </span>
                       ) : (
-                        <span>Save Changes</span>
+                        'Update Profile'
                       )}
                     </button>
                   </div>

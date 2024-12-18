@@ -21,7 +21,9 @@ const LoginPage = () => {
         localStorage.setItem('company', response.data.company)
         localStorage.setItem('userId', response.data.id)
         localStorage.setItem('userName', response.data.userName)
-        localStorage.setItem('userImage', response.data.userAvatar)
+        if(response.data.userAvatar) {
+          localStorage.setItem('userImage', response.data.userAvatar)
+        }
         router.push('/');
        } else {
         setError('Invalid credentials');

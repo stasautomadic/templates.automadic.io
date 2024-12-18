@@ -5,13 +5,20 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 import withAuth from '@/components/withAuth';
 import Header from '@/components/Header';
 import Sidebar from '@/components/Sidebar';
-import styles from '@/styles/Home.module.css';
-import JSZip from 'jszip';
+import { PlaylistTab } from '@/components/PlaylistTab';
 
-const MediaItem = ({ medi, index, moveItem }) => {
+const MediaItem = ({ medi, index, moveItem, onDelete }) => {
     const [{ isDragging }, dragRef] = useDrag({
         type: 'MEDIA_ITEM',
-        item: { index },
+        item: { 
+            type: 'MEDIA_ITEM',
+            index, 
+            videoId: medi.url,
+            templateNames: medi.templateNames,
+            created_at: medi.created_at,
+            url: medi.url,
+            video: medi
+        },
         collect: (monitor) => ({
             isDragging: monitor.isDragging(),
         }),
@@ -20,81 +27,86 @@ const MediaItem = ({ medi, index, moveItem }) => {
     const [, dropRef] = useDrop({
         accept: 'MEDIA_ITEM',
         hover: (draggedItem) => {
-            if (draggedItem.index !== index) {
+            if (draggedItem.type === 'MEDIA_ITEM' && draggedItem.index !== index) {
                 moveItem(draggedItem.index, index);
                 draggedItem.index = index;
             }
         },
     });
 
-    const dragHandleRef = (node) => {
-        dragRef(node);
-    };
-
-    // Add device detection
-    const isMobileDevice = () => {
-        return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    };
-
-    // Handle download for desktop
-    const handleDownload = async () => {
-        const response = await fetch(medi.url);
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = medi.templateNames || 'download';
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-    };
-
-    // Updated mobile share handler to use native share sheet
-    const handleShare = async () => {
+    const handleDownload = async (url) => {
         try {
-            // Use Web Share API which will show native iOS share sheet
-            if (navigator.share) {
-                const response = await fetch(medi.url);
-                const blob = await response.blob();
-                const file = new File([blob], `${medi.templateNames || 'video'}.mp4`, { type: blob.type });
+            const response = await fetch(url);
+            const blob = await response.blob();
+            
+            // Check if it's an iOS device
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+            
+            if (isIOS) {
+                // Create a temporary URL for the blob
+                const blobUrl = URL.createObjectURL(blob);
                 
-                await navigator.share({
-                    files: [file],
-                    title: medi.templateNames,
-                });
+                // Create a hidden video element
+                const videoElement = document.createElement('video');
+                videoElement.style.display = 'none';
+                videoElement.controls = true;
+                videoElement.src = blobUrl;
+                
+                // Add the video element to the page
+                document.body.appendChild(videoElement);
+                
+                // Play the video (this will trigger iOS's native video player)
+                videoElement.play();
+                
+                // Clean up after a short delay
+                setTimeout(() => {
+                    URL.revokeObjectURL(blobUrl);
+                    document.body.removeChild(videoElement);
+                }, 100);
+            } else {
+                // For non-iOS devices, use standard download
+                const blobUrl = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = `video-${Date.now()}.mp4`; // Generate unique filename
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(blobUrl);
+                document.body.removeChild(a);
             }
         } catch (error) {
-            console.error('Error sharing:', error);
+            console.error('Download failed:', error);
+            alert('Failed to download the video. Please try again.');
+        }
+    };
+
+    // Format date safely
+    const formatDate = (date) => {
+        if (!date) return 'Unknown date';
+        try {
+            if (typeof date === 'string') {
+                return new Date(date).toLocaleDateString();
+            }
+            return date.toLocaleDateString();
+        } catch (e) {
+            return 'Invalid date';
         }
     };
 
     return (
         <div 
-            ref={dropRef}
-            className="group hover:bg-gray-50 transition-all duration-150 ease-in-out transform"
-            style={{ 
-                opacity: isDragging ? 0.5 : 1,
-                border: '1px solid #e5e7eb',
-                marginBottom: '0.5rem',
-                backgroundColor: 'white',
-                borderRadius: '0.5rem',
-                transform: isDragging ? 'scale(1.02)' : 'scale(1)',
-                boxShadow: isDragging ? '0 8px 16px rgba(0,0,0,0.1)' : 'none',
-                transition: 'transform 0.1s ease-in-out, box-shadow 0.1s ease-in-out',
-            }}
+            className={`group bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-200 
+                       ${isDragging ? 'opacity-50 scale-[1.02] shadow-lg' : 'opacity-100 scale-100'}`}
         >
-            <li className="flex items-center p-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center p-4 sm:p-6 gap-4">
                 <div 
-                    ref={dragHandleRef}
-                    className="invisible group-hover:visible cursor-move mr-4 text-gray-400 
-                             hover:text-gray-600 transition-all duration-150 ease-in-out
-                             transform hover:scale-110"
+                    ref={dragRef}
+                    className="block cursor-move text-gray-400 
+                             hover:text-gray-600 transition-all duration-200"
+                    aria-label="Drag to reorder"
                 >
                     <svg 
                         xmlns="http://www.w3.org/2000/svg" 
-                        width="24" 
-                        height="24" 
                         viewBox="0 0 24 24" 
                         fill="currentColor"
                         className="w-5 h-5"
@@ -103,48 +115,78 @@ const MediaItem = ({ medi, index, moveItem }) => {
                     </svg>
                 </div>
 
-                <div className='w-[70%]'>
-                    <div className="flex items-center gap-3">
-                        <h3 className="font-semibold text-gray-900">{medi.templateNames}</h3>
-                        <span className="px-3 py-1 text-sm font-medium text-green-700 bg-green-100 rounded-full">
+                <div className='flex-1 min-w-0'>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                        <h3 className="font-semibold text-gray-900 truncate">{medi.templateNames}</h3>
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                             Finished
                         </span>
                     </div>
-                    <div className="mt-1 flex items-center text-sm text-gray-500">
-                        <span>Created {medi.created_at.toLocaleDateString()}</span>
-                        <span className="mx-2"></span>
-                        <span>By {localStorage.getItem('userName')}</span>
+                    <div className="mt-1 flex flex-col sm:flex-row sm:items-center text-sm text-gray-500 gap-1 sm:gap-0">
+                        <span className="whitespace-nowrap">Created {formatDate(medi.created_at)}</span>
+                        <span className="hidden sm:inline mx-2">•</span>
+                        <span className="whitespace-nowrap">By {localStorage.getItem('userName')}</span>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3 mt-4">
-                    <button 
-                        onClick={() => window.open(medi.url, '_blank')}
-                        className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                <div className='flex items-center gap-2 sm:gap-3 w-full sm:w-auto'>
+                    <button
+                        onClick={() => handleDownload(medi.url)}
+                        className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 text-sm font-medium 
+                                text-blue-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 
+                                focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500
+                                transition-colors duration-200"
+                        title="Download"
                     >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        Download
+                    </button>
+                    <button
+                        onClick={() => onDelete(medi.url)}
+                        className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 text-sm font-medium 
+                                text-red-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 
+                                focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500
+                                transition-colors duration-200"
+                        title="Delete"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Delete
+                    </button>
+                    <button
+                        onClick={() => window.open(medi.url, "_blank")}
+                        className="w-full sm:w-auto inline-flex items-center justify-center px-4 py-2 text-sm font-medium 
+                                text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 
+                                focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500
+                                transition-colors duration-200"
+                    >
+                        <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
                         Preview
                     </button>
-
-                    {!isMobileDevice() ? (
-                        <button 
-                            onClick={handleDownload}
-                            className="px-4 py-2 text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors"
-                        >
-                            Download
-                        </button>
-                    ) : (
-                        <button 
-                            onClick={handleShare}
-                            className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
-                        >
-                            Share
-                        </button>
-                    )}
                 </div>
-            </li>
+            </div>
         </div>
     );
 };
+
+const TabButton = ({ active, onClick, children }) => (
+    <button
+        onClick={onClick}
+        className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-200 ${
+            active
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-700 text-white'
+        }`}
+    >
+        {children}
+    </button>
+);
 
 const Media = () => {
     const [media, setMedia] = useState([]);
@@ -153,7 +195,8 @@ const Media = () => {
     const [userID, setUserID] = useState(null);  
     const [loading, setLoading] = useState(false);
     const [mediaOrder, setMediaOrder] = useState([]);
-    const [isSidebarOpen, setSidebarOpen] = useState(false);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [activeTab, setActiveTab] = useState('library');
 
     const AIRTABLE_BASE_ID = process.env.NEXT_PUBLIC_AIRTABLE_BASE_ID;
     const API_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/`;
@@ -170,14 +213,19 @@ const Media = () => {
         }
     }, []);
 
+    useEffect(() => {
+        if (userID) {
+            fetchMedia();
+        }
+    }, [userID, page]);
+
     const getAllMedia = async (page) => {
         setLoading(true);
         try {
             const pageSize = 30;
 
             if (!userID) {
-                console.error('User ID not found in localStorage');
-                return { records: [], hasMore: false };
+                throw new Error('User ID not found in localStorage');
             }
 
             const filterFormula = encodeURIComponent(`{userID (from userID)} = '${userID}'`);
@@ -192,7 +240,7 @@ const Media = () => {
             });
 
             if (!response.ok) {
-                return { records: [], hasMore: false };
+                throw new Error('Failed to fetch media');
             }
 
             const data = await response.json();
@@ -201,7 +249,7 @@ const Media = () => {
                     if (record?.fields?.finished_URL_AWS) {
                         return {
                             url: record.fields.finished_URL_AWS,
-                            templateNames: record.fields.creatomateTemplateName,
+                            templateNames: record.fields.templateName,
                             created_at: new Date(record.fields.createdTime),
                         };
                     }
@@ -248,6 +296,7 @@ const Media = () => {
                 const [movedItem] = updatedMedia.splice(fromIndex, 1);
                 updatedMedia.splice(toIndex, 0, movedItem);
                 
+                // Update order in localStorage
                 const newOrder = updatedMedia.map(item => item.url);
                 if (userID) {
                     localStorage.setItem(`mediaOrder-${userID}`, JSON.stringify(newOrder));
@@ -259,86 +308,170 @@ const Media = () => {
         });
     };
 
-    useEffect(() => {
-        fetchMedia();
-    }, [page, userID]);
+    const handleDelete = async (url) => {
+        if (!confirm('Are you sure you want to delete this video?')) {
+            return;
+        }
 
-    const loadMore = () => {
-        if (hasMore) {
-            setPage((prevPage) => prevPage + 1);
+        try {
+            // Find the record ID by URL
+            const filterFormula = encodeURIComponent(`AND({userID (from userID)} = '${userID}', {finished_URL_AWS} = '${url}')`);
+            const searchUrl = `${API_URL}tblWEuXbE96RagR0E?filterByFormula=${filterFormula}`;
+            
+            const response = await fetch(searchUrl, {
+                headers: {
+                    Authorization: `Bearer ${API_KEY}`,
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to find record');
+            }
+
+            const data = await response.json();
+            if (data.records.length > 0) {
+                const recordId = data.records[0].id;
+                
+                // Delete the record
+                const deleteUrl = `${API_URL}tblWEuXbE96RagR0E/${recordId}`;
+                const deleteResponse = await fetch(deleteUrl, {
+                    method: 'DELETE',
+                    headers: {
+                        Authorization: `Bearer ${API_KEY}`,
+                    },
+                });
+
+                if (!deleteResponse.ok) {
+                    throw new Error('Failed to delete record');
+                }
+
+                // Update local state
+                setMedia(prevMedia => prevMedia.filter(item => item.url !== url));
+                
+                // Update media order
+                const newOrder = mediaOrder.filter(item => item !== url);
+                setMediaOrder(newOrder);
+                localStorage.setItem(`mediaOrder-${userID}`, JSON.stringify(newOrder));
+            }
+        } catch (error) {
+            console.error('Error deleting media:', error);
+            alert('Failed to delete the video. Please try again.');
         }
     };
 
-    const toggleSidebar = () => {
-        setSidebarOpen(!isSidebarOpen);
+    const handleScroll = (e) => {
+        const { scrollTop, clientHeight, scrollHeight } = e.target;
+        if (scrollHeight - scrollTop <= clientHeight * 1.5 && !loading && hasMore) {
+            setPage(prev => prev + 1);
+        }
     };
 
-    const setIsOpen = () => {
-        setSidebarOpen(false);
-    };
+    const renderContent = () => {
+        switch (activeTab) {
+            case 'playlists':
+                return <PlaylistTab media={media} />;
+            default:
+                return (
+                    <div className="space-y-4">
+                        {media.map((medi, index) => (
+                            <MediaItem
+                                key={`${medi.url}-${index}`}
+                                medi={medi}
+                                index={index}
+                                moveItem={moveItem}
+                                onDelete={handleDelete}
+                            />
+                        ))}
 
-    async function downloadMediaAsZip(urls) {
-        const zip = new JSZip();
-        
-        const downloads = urls.map(async (url, index) => {
-            const response = await fetch(url);
-            const blob = await response.blob();
-            zip.file(`media_${index + 1}.mp4`, blob);
-        });
-        
-        await Promise.all(downloads);
-        
-        const zipBlob = await zip.generateAsync({type: 'blob'});
-        const zipUrl = window.URL.createObjectURL(zipBlob);
-        const link = document.createElement('a');
-        link.href = zipUrl;
-        link.download = 'media_files.zip';
-        link.click();
-        window.URL.revokeObjectURL(zipUrl);
-    }
+                        {loading && (
+                            <div className="flex justify-center items-center py-8">
+                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
+                            </div>
+                        )}
+
+                        {!loading && !hasMore && media.length > 0 && (
+                            <p className="text-center text-gray-500 py-8">
+                                You've reached the end of your media library
+                            </p>
+                        )}
+
+                        {!loading && media.length === 0 && (
+                            <div className="text-center py-12">
+                                <svg
+                                    className="mx-auto h-12 w-12 text-gray-400"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                    aria-hidden="true"
+                                >
+                                    <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"
+                                    />
+                                </svg>
+                                <h3 className="mt-2 text-sm font-medium text-gray-900">No media files</h3>
+                                <p className="mt-1 text-sm text-gray-500">
+                                    Get started by creating a new video template
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                );
+        }
+    };
 
     return (
-        <div>
-            <Head>
-                <title>Media</title>
-                <meta name="description" content="Home page showing all templates" />
-                <meta name="viewport" content="width=device-width, initial-scale=1" />
-                <link rel="icon" href="/favicon.ico" />
-            </Head>
-            <div className="flex h-screen">
-                <Sidebar setIsOpen={setIsOpen} isOpen={isSidebarOpen} />
-                <div className="flex-1 flex flex-col w-[80%]">
-                    <Header toggleSidebar={toggleSidebar} />
-                    {loading ? (
-                        <div className="flex justify-center items-center h-screen">
-                            <div className={styles.loader} />
-                        </div>
-                    ) : (
-                        <main className="flex-1 overflow-y-auto bg-gray-100 p-6">
-                            <DndProvider backend={HTML5Backend}>
-                                <div className="mt-5">
-                                    {media.map((medi, index) => (
-                                        <MediaItem
-                                            key={medi.url}
-                                            medi={medi}
-                                            index={index}
-                                            moveItem={moveItem}
-                                        />
-                                    ))}
+        <DndProvider backend={HTML5Backend}>
+            <div>
+                <Head>
+                    <title>Media Library - Automadic</title>
+                    <meta name="description" content="View and manage your media files" />
+                </Head>
+
+                <div className="flex h-screen bg-gray-50">
+                    <Sidebar setIsOpen={setIsSidebarOpen} isOpen={isSidebarOpen} />
+                    
+                    <div className="flex-1 flex flex-col md:ml-10">
+                        <Header toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
+                        
+                        <main 
+                            className="flex-1 overflow-y-auto pt-16 md:pt-0 px-4 sm:px-6 lg:px-8"
+                            onScroll={handleScroll}
+                        >
+                            <div className="max-w-7xl mx-auto py-6">
+                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8">
+                                    <div>
+                                        <h1 className="text-2xl font-bold text-gray-900">Media Library</h1>
+                                        <p className="mt-1 text-sm text-gray-500">
+                                            Manage and preview your video templates
+                                        </p>
+                                    </div>
                                 </div>
-                            </DndProvider>
-                            <div className='center'>
-                                {hasMore && page != 1 && (
-                                    <button className='btnblack' onClick={loadMore}>
-                                        Load More
-                                    </button>
-                                )}
+
+                                <div className="flex space-x-4 mb-6">
+                                    <TabButton 
+                                        active={activeTab === 'library'} 
+                                        onClick={() => setActiveTab('library')}
+                                    >
+                                        Library
+                                    </TabButton>
+                                    <TabButton 
+                                        active={activeTab === 'playlists'} 
+                                        onClick={() => setActiveTab('playlists')}
+                                    >
+                                        Playlists
+                                    </TabButton>
+                                </div>
+
+                                {renderContent()}
                             </div>
                         </main>
-                    )}
+                    </div>
                 </div>
             </div>
-        </div>
+        </DndProvider>
     );
 };
 

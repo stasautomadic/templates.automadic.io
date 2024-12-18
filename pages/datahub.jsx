@@ -60,13 +60,17 @@ const getAllPlayerImages = async (fpSearchText, page = 1) => {
   
        // map over the records and return the player full name 
        const players = playerData.records.map((record) => record.fields.playerFullName);
-  
+
+       // Function to escape special characters in player names
+       const escapePlayerName = (name) => {
+        return name.replace(/'/g, "\\'");
+       };
+
        // images filter formula 
        const imageFilterFormula = `OR(${players
-          .map((player) => `({playerFullName (from player_name_referenced)} = '${player}')`)
+          .map((player) => `({playerFullName (from player_name_referenced)} = '${escapePlayerName(player)}')`)
           .join(',')})`;
-        
-  
+
         // image endpoints 
         const imageUrl = `${API_URL}tblRtJP6ThRNs7Hqd?filterByFormula=${encodeURIComponent(imageFilterFormula)}&maxRecords=${DEFAULT_PAGE_SIZE}`;
         
@@ -89,7 +93,7 @@ const getAllPlayerImages = async (fpSearchText, page = 1) => {
         const playerImagesMap = imageData.records.reduce((acc, record) => {
             const playerName = record.fields['playerFullName (from player_name_referenced)'];
             const recordId = record.fields['recordid'];
-  
+            
             // Use the image URL or placeholder if no image found
             acc[playerName] = {
               imageUrl: record.fields.FrontalVerschraenkt ? record.fields.FrontalVerschraenkt
@@ -390,12 +394,14 @@ const toggleSidebar = () => {
         const imageTableData = {
           fields: {
             fileNameClean: playerName == '' ? selectedPlayer.name : playerName,
-            Image: [{ url: imageUrl }],
+            Image: [{ url: imageUrl == PLACEHOLDER_IMAGE ? selectedPlayer.image : imageUrl }],
+            FrontalVerschraenkt: imageUrl == PLACEHOLDER_IMAGE ? selectedPlayer.image : imageUrl,
             companyGroup: [companyID],
           },
         };
 
         const imageUrlR = `${API_URL}tblRtJP6ThRNs7Hqd/${selectedPlayer.id}`
+
        // Send data to the image table PATCH for update
        await fetch(imageUrlR, {
           method: 'PATCH' ,
@@ -409,7 +415,7 @@ const toggleSidebar = () => {
         // Prepare data for player details table
         const playerData = {
             fields: {
-                playerFullName: playerName,
+                playerFullName: playerName == '' ? selectedPlayer.name : playerName,
                 Company: [companyID],
             },
         };
@@ -424,10 +430,32 @@ const toggleSidebar = () => {
             body: JSON.stringify(playerData),
         });
       } else {
+        // Prepare data for player details table
+        const playerData = {
+            fields: {
+                playerFullName: playerName,
+                Company: [companyID],
+            },
+        };
+
+        const playerUrl = `${API_URL}tbl18T2ANqmt11hez`;
+        const playerResponsa =  await fetch(playerUrl, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${API_KEY}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(playerData),
+        });
+
+        const player = await playerResponsa.json();
+
         const imageTableData = {
           fields: {
             fileNameClean: playerName,
             Image: [{ url: imageUrl }],
+            player_name_referenced: [player.id],
+            FrontalVerschraenkt: imageUrl,
             companyGroup: [companyID],
           },
         };
@@ -442,44 +470,32 @@ const toggleSidebar = () => {
             },
             body: JSON.stringify(imageTableData),
         });
-
-        // Prepare data for player details table
-        const playerData = {
-            fields: {
-                playerFullName: playerName,
-                Company: [companyID],
-            },
-        };
-
-        const playerUrl = `${API_URL}tbl18T2ANqmt11hez`;
-        await fetch(playerUrl, {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${API_KEY}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(playerData),
-        });
-
       }
 
+      // Reset form state
       setPlayerName('');
       setShowModalImage(false);
       setPlayerImage(null);
       setSelectedPlayer(null);
       setPageImage(1);
+
+      // Immediately fetch updated players list
+      const { records } = await getAllPlayerImages(searchTermImage, 1);
+      console.log(records)
+      setPlayers(records);
+      
     } catch (error) {
         console.error('Error saving player:', error);
     } finally {
         setLoadingCreateImage(false)
     }
 };
+
       
   useEffect(() => {
     const fetchPictures = async () => {
       setLoadingImage(true);
       const { records, hasMore } = await getAllPlayerImages(searchTermImage, page);
-      console.log(records)
       setPlayers((prev) => (page === 1 ? records : [...prev, ...records]));
       setHasMoreImage(hasMore);
       setLoadingImage(false);
@@ -533,31 +549,19 @@ const toggleSidebar = () => {
                                {
                                  activeTab === 'Players' && (
                                    <>
-                                    <div className="container mx-auto px-6">
-                                        <div className="flex items-center justify-between gap-4 mb-8 mt-6">
-                                            <div className="relative flex-1 max-w-xl">
-                                                <input
-                                                    type="text"
-                                                    placeholder="Type here to search for player"
-                                                    className="w-full px-4 py-3 pl-11 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none shadow-sm"
-                                                    onChange={(e) => handleSearch(e.target.value)}
-                                                />
-                                                <div className="absolute left-3 top-1/2 -translate-y-1/2">
-                                                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                                                    </svg>
-                                                </div>
-                                            </div>
-
-                                            <button
-                                                onClick={() => setShowAddPlayerModal(true)}
-                                                className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-all shadow-sm"
-                                            >
-                                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                                                </svg>
-                                                Add Player
-                                            </button>
+                                    <div className="container mx-auto px-4">
+                                        <input
+                                            type="text"
+                                            placeholder="Type here to search for player"
+                                            className="border p-2 w-[40%] mt-4 mb-[2rem]"
+                                            value={searchTerm}
+                                            onChange={(e) => {
+                                            setSearchTermImage(e.target.value);
+                                            setPageImage(1); // Reset page when search term changes
+                                            }}
+                                        />
+                                        <div className="w-[100%] flex justify-end">
+                                            <button onClick={() => setShowModalImage(true)}  className="btnblack mb-4 rounded-full bg-[#0088ff] w-[150px] ">+ Add Player</button>
                                         </div>
                                         {loading ? (
                                             <div className="flex justify-center items-center h-screen">
@@ -565,128 +569,95 @@ const toggleSidebar = () => {
                                             </div>
                                         ) : (
                                             <>
-                                            <div className="grid grid-cols-3 gap-6 mt-4">
-                                                {players.map((player, index) => (
-                                                    <div 
-                                                        key={index} 
-                                                        className="bg-white rounded-lg shadow-lg overflow-hidden transform transition-transform duration-200 hover:scale-105"
+                                            <div className="grid grid-cols-4 gap-4 mt-4 ">
+                                                {players.sort((a, b) => {
+                                                const aIsEmpty = (a.image === "EMPTY RECORD" || a.image === "https://placehold.jp/150x150.png") ? 1 : 0;
+                                                const bIsEmpty = (b.image === "EMPTY RECORD" || b.image === "https://placehold.jp/150x150.png") ? 1 : 0;
+                                                return aIsEmpty - bIsEmpty;
+                                                }).map((player, index) => (
+                                                <div key={index} className="border rounded-lg p-4 bg-gray-100 relative">
+                                                <img
+                                                    src={player.image}
+                                                    alt={player.name}
+                                                    className="w-full h-80 object-cover"
+                                                />
+                                                <div className="flex justify-between items-center">
+                                                    <h2 className="text-lg mt-2">{player.name}</h2>
+                                                    <button 
+                                                    onClick={() => {
+                                                        setSelectedPlayer({
+                                                        id: player.id,   // Ensure id is included
+                                                        name: player.name,
+                                                        image: player.image
+                                                        }); // Set player to be edited
+                                                        setShowModalImage(true);
+                                                    }}
+                                                    style={{background:'none'}}
+                                                    className="bg-none-blue absolute top-[20px] right-[10px]"
                                                     >
-                                                        <div className="relative">
-                                                            <img
-                                                                src={player.image}
-                                                                alt={player.name}
-                                                                className="w-full h-[400px] object-cover"
-                                                            />
-                                                            <div className="absolute top-2 right-2">
-                                                                <button 
-                                                                    onClick={() => {
-                                                                        setSelectedPlayer({
-                                                                            id: player.id,
-                                                                            name: player.name,
-                                                                            image: player.image
-                                                                        });
-                                                                        setShowModalImage(true);
-                                                                    }}
-                                                                    className="p-2 rounded-full bg-white/80 hover:bg-white"
-                                                                >
-                                                                    <img 
-                                                                        src='/Edit-icon-images.svg' 
-                                                                        alt="Edit" 
-                                                                        className="w-5 h-5"
-                                                                    />
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                        <div className="p-4">
-                                                            <h2 className="text-lg font-semibold text-gray-800">{player.name}</h2>
-                                                        </div>
-                                                    </div>
+                                                    <img src='/Edit-icon-images.svg' alt="Edit Icon" style={{ width: '24px', height: '24px', verticalAlign: 'middle' }} />
+                                                    </button>
+                                                </div>
+                                                </div>
                                                 ))}
                                             </div>
 
                                             {hasMoreImage && !loadingImage && (
                                                 <div className="flex justify-center mt-[2rem]">
-                                                  <button className="btnblack" onClick={loadMore}>Load More</button>
+                                                  <button className="btnblack" onClick={loadMoreImage}>Load More</button>
                                                 </div>
                                             )}
                                             </>
                                         )}
                                     </div>
                                     {showModalImage && (
-                                      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex justify-center items-center p-4">
-                                        <div className="bg-white rounded-2xl p-8 w-full max-w-md transform transition-all">
-                                          <h2 className="text-2xl font-bold mb-6 text-gray-800">
-                                            {selectedPlayer ? 'Edit Player' : 'Add New Player'}
-                                          </h2>
-                                          
-                                          <form onSubmit={handlePlayerFormSubmit} className="space-y-6">
-                                            <div>
-                                              <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                Player Name
-                                              </label>
-                                              <input
-                                                type="text"
-                                                value={selectedPlayer && playerName == '' ? selectedPlayer.name : playerName}
-                                                onChange={(e) => setPlayerName(e.target.value)}
-                                                className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all outline-none"
-                                                placeholder="Enter player name"
-                                                required
-                                              />
-                                            </div>
-
-                                            <div>
-                                              <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                Player Image
-                                              </label>
-                                              <div className="relative">
-                                                <input
-                                                  type="file"
-                                                  onChange={handlePlayerImageUpload}
-                                                  className="hidden"
-                                                  id="image-upload"
-                                                />
-                                                <label 
-                                                  htmlFor="image-upload" 
-                                                  className="w-full h-48 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 transition-colors group"
-                                                >
-                                                  {playerImage ? (
-                                                    <div className="text-center">
-                                                      <div className="text-sm text-gray-600">File selected:</div>
-                                                      <div className="text-blue-500 font-medium">{playerImage.name}</div>
+                                            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex justify-center items-center">
+                                            <div className="bg-white rounded-lg p-8 w-1/3">
+                                                <form onSubmit={handlePlayerFormSubmit}>
+                                                <div className="mb-[1rem]">
+                                                    <label className="block mb-2 text-lg font-semibold">Player Name:</label>
+                                                    <input
+                                                    type="text"
+                                                    value={selectedPlayer && playerName == '' ? selectedPlayer.name : playerName}
+                                                    onChange={(e) => setPlayerName(e.target.value)}
+                                                    className="border p-2 w-full"
+                                                    required
+                                                    />
+                                                </div>
+                                                <div className="mb-[1.5rem]">
+                                                    <label className="block mb-2 text-lg font-semibold">Upload Image:</label>
+                                                    <div className="flex items-center justify-center w-full border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-blue-500 transition-colors duration-300 cursor-pointer">
+                                                    <input
+                                                        type="file"
+                                                        onChange={handlePlayerImageUpload}
+                                                        className="hidden" // Hide the default input
+                                                        id="image-upload" // Associate label with input
+                                                    />
+                                                    <label htmlFor="image-upload" className="flex flex-col items-center cursor-pointer">
+                                                        <FaUpload className="text-3xl text-gray-500 mb-2" /> {/* Upload icon */}
+                                                        <span className="text-gray-600">Drag & Drop your image here</span>
+                                                        <span className="text-gray-400 text-sm">or click to browse</span>
+                                                    </label>
                                                     </div>
-                                                  ) : (
-                                                    <>
-                                                      <div className="w-12 h-12 mb-2 rounded-full bg-blue-50 flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                                                        <FaUpload className="text-xl text-blue-500" />
-                                                      </div>
-                                                      <div className="text-sm text-gray-600">Drag & Drop your image here</div>
-                                                      <div className="text-xs text-gray-400 mt-1">or click to browse</div>
-                                                    </>
-                                                  )}
-                                                </label>
-                                              </div>
+                                                </div>
+                                                <div className="flex flex-col items-center">
+                                                    <button 
+                                                    type="submit" 
+                                                    className="bg-black text-white mb-[1rem] w-[75%]"
+                                                    >
+                                                    {selectedPlayer && !loadingCreateImage ? 'Update' : selectedPlayer && loadingCreateImage ? 'updating ...' : !selectedPlayer && loadingCreateImage ? 'Creating ...' : 'Create'}
+                                                    </button>
+                                                    <button 
+                                                    type="button" 
+                                                    onClick={() => setShowModalImage(false)} 
+                                                    className="bg-[#ff3b30] text-white mb-[1rem] w-[75%]"
+                                                    >
+                                                    Cancel
+                                                    </button>
+                                                </div>
+                                                </form>
                                             </div>
-
-                                            <div className="flex flex-col gap-3 mt-8">
-                                              <button 
-                                                type="submit" 
-                                                className="w-full py-3 px-4 rounded-lg bg-blue-500 text-white font-medium hover:bg-blue-600 transition-colors focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                                              >
-                                                {selectedPlayer && !loadingCreateImage ? 'Update Player' : 
-                                                 selectedPlayer && loadingCreateImage ? 'Updating...' : 
-                                                 !selectedPlayer && loadingCreateImage ? 'Creating...' : 'Create Player'}
-                                              </button>
-                                              <button 
-                                                type="button" 
-                                                onClick={() => setShowModalImage(false)} 
-                                                className="w-full py-3 px-4 rounded-lg bg-gray-100 text-gray-700 font-medium hover:bg-gray-200 transition-colors"
-                                              >
-                                                Cancel
-                                              </button>
                                             </div>
-                                          </form>
-                                        </div>
-                                      </div>
                                     )}
                                    </>
                                   )

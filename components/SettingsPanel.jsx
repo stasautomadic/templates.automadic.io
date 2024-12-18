@@ -1,4 +1,3 @@
-// imports
 import React, { useEffect, ChangeEvent, useCallback, useState, useRef } from 'react';
 import { Preview, PreviewState } from '@creatomate/preview';
 import { CreateButton } from '@/components/CreateButton';
@@ -18,6 +17,9 @@ import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import Box from '@mui/material/Box';
 import TextField from '@mui/material/TextField';
 import Autocomplete from '@mui/material/Autocomplete';
+import Typography from '@mui/material/Typography';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import Switch from '@mui/material/Switch';
 
 // get env files
 const AIRTABLE_BASE_ID = process.env.NEXT_PUBLIC_AIRTABLE_BASE_ID
@@ -54,15 +56,14 @@ const getAllTeam = async (teamNameStartsWith, page = 1) => {
     try {
         const companyID = localStorage.getItem('company');
         let filterFormula = companyID
-        ? `SEARCH("${companyID}", ARRAYJOIN({companyID (from connect-companyGroup)})) > 0`
-        : '';
-      
+            ? `SEARCH("${companyID}", ARRAYJOIN({companyID (from connect-companyGroup)})) > 0`
+            : '';
 
         if (teamNameStartsWith) {
             filterFormula = filterFormula
-            ? `AND(${filterFormula}, SEARCH(LOWER("${teamNameStartsWith}"), LOWER({TeamName})))`
-            : `AND(SEARCH(LOWER("${teamNameStartsWith}"), LOWER({TeamName})))`;
-      }
+                ? `AND(${filterFormula}, SEARCH(LOWER("${teamNameStartsWith}"), LOWER({TeamName})))`
+                : `AND(SEARCH(LOWER("${teamNameStartsWith}"), LOWER({TeamName})))`;
+        }
 
         // get teams by the teamname
         const pageSize = 100; // Number of records per page
@@ -82,28 +83,30 @@ const getAllTeam = async (teamNameStartsWith, page = 1) => {
 
         // the data returned from airtable
         const data = await response.json();
-        console.log(data)
         // if there is no records return an empty array
         if (data.records.length === 0) {
             return { records: [], hasMore: false };
         } else {
             // data array variable to map over all the records from the response data and return only the one with a logourl
-            const dataArr = data.records
-                .map((record) => {
+            const dataArr = await Promise.all(
+                data.records.map(async (record) => {
                     if (record?.fields?.logoUrl) {
                         return {
                             name: record.fields.TeamName,
                             image: record.fields.logoUrl,
-                            league: record.fields.leagueName,
+                            league: record.fields.CountryAndLeagueName,
+                            leagueName: record.fields.leagueName, 
+                            leagueLogo: null
                         };
                     }
                     return null;
                 })
-                .filter((item) => item !== null);
+            );
 
-            return { records: dataArr, hasMore: data.records.length === pageSize };
+            return { records: dataArr.filter((item) => item !== null), hasMore: data.records.length === pageSize };
         }
     } catch (error) {
+        console.error(error);
         return { records: [], hasMore: false };
     }
 };
@@ -202,9 +205,13 @@ const getAllPlayerImages = async (fpSearchText, page = 1) => {
         // map over the records and return the player full name 
         const players = playerData.records.map((record) => record.fields.playerFullName);
 
+        const escapePlayerName = (name) => {
+            return name.replace(/'/g, "\\'");
+           };
+    
         // images filter formula 
         const imageFilterFormula = `OR(${players
-            .map((player) => `({playerFullName (from player_name_referenced)} = '${player}')`)
+            .map((player) => `({playerFullName (from player_name_referenced)} = '${escapePlayerName(player)}')`)
             .join(',')})`;
 
         // image endpoints 
@@ -247,9 +254,14 @@ const getAllPlayerImages = async (fpSearchText, page = 1) => {
 
             // Only include players with images
             if (playerImage && playerImage.imageUrl) {
+                const nameParts = playerName.split(' ');
+                const firstName = nameParts[0] || '';
+                const lastName = nameParts.slice(1).join(' ') || '';
                 return {
                     positionAndNumber: positionAndNumber,
                     name: playerName,
+                    firstName: firstName,
+                    lastName: lastName,
                     playerImage: playerImage.imageUrl,
                 };
             }
@@ -262,6 +274,33 @@ const getAllPlayerImages = async (fpSearchText, page = 1) => {
     }
 }
 
+// Function to fetch league logo
+const fetchLeagueLogo = async (leagueName) => {
+    if (!leagueName) return null;
+    
+    try {
+        const leagueUrl = `${API_URL}tblQ6T2kkI21Q6PmO?filterByFormula=${encodeURIComponent(`{ligaLogoName} = "${leagueName}"`)}`;
+        const leagueResponse = await fetch(leagueUrl, {
+            headers: {
+                Authorization: `Bearer ${API_KEY}`,
+            },
+        });
+
+        if (leagueResponse.ok) {
+            const leagueData = await leagueResponse.json();
+            console.log(leagueData)
+            if (leagueData.records.length > 0) {
+                return leagueData.records[0].fields.AWSfilepath;
+            }
+        }
+        return null;
+    } catch (error) {
+        console.error('Error fetching league logo:', error);
+        return null;
+    }
+};
+
+// get template name
 const getTemplateName = async (id) => {
     try {
         // Initialize the filter formula for the companyID and the search term
@@ -410,6 +449,8 @@ export const SettingsPanel = (props) => {
     const [playerImageUrls, setPlayerImageUrls] = useState({});
     const [teamLogoUrlRight, setTeamLogoUrlRight] = useState('');
     const [sponsorLogo, setSponsorLogo] = useState('');
+    const [previousSponsorLogo, setPreviousSponsorLogo] = useState(null);
+    const [isSponsorActive, setIsSponsorActive] = useState(true);
     const [searchText, setSearchText] = useState('');
     const modificationsRef = useRef({});
     const [textValues, setTextValues] = useState({});
@@ -422,7 +463,79 @@ export const SettingsPanel = (props) => {
     const [hasMoreP, setHasMoreP] = useState(true);
     const [hasMoreS, setHasMoreS] = useState(true);
     const [templateNames, setTemplateNames] = useState('')
+    const [selectedTemplates, setSelectedTemplates] = useState(() => {
+        // Initialize all templates to true (ON) by default
+        const templates = {};
+        if (props.additionalPreviewRefs?.current) {
+            Object.keys(props.additionalPreviewRefs.current).forEach(key => {
+                templates[key] = true;
+            });
+        }
+        return templates;
+    });
+    const updateTimeoutRef = useRef(null);
 
+    const handleSponsorToggle = async (event) => {
+        const checked = event.target.checked;
+        setIsSponsorActive(checked);
+
+        if (!checked) {
+            setPreviousSponsorLogo(sponsorLogo);
+            try {
+                // Fill the sponsor logo with null in all previews
+                await ensureElementVisibility(props.preview, 'Sponsor Logo', 1.5);
+                await setPropertyValue(props.preview, 'Sponsor Logo', 'nu', modificationsRef.current);
+
+                const { additionalPreviewRefs } = props;
+                if (additionalPreviewRefs?.current) {
+                    await Promise.all(
+                        Object.keys(additionalPreviewRefs.current).map(async (key) => {
+                            const preview = additionalPreviewRefs.current[key];
+                            if (preview && typeof preview.loadTemplate === 'function') {
+                                try {
+                                    await ensureElementVisibility(preview, 'Sponsor Logo', 1.5);
+                                    await setPropertyValue(preview, 'Sponsor Logo', 'nu', modificationsRef.current);
+                                } catch (previewErr) {
+                                    console.error('Error updating additional preview:', previewErr);
+                                }
+                            }
+                        })
+                    );
+                }
+            } catch (err) {
+                console.error('Error deactivating sponsor logo:', err);
+            }
+        } else {
+            // Restore the previous sponsor logo
+            if (previousSponsorLogo) {
+                setSponsorLogo(previousSponsorLogo);
+
+                try {
+                    await ensureElementVisibility(props.preview, 'Sponsor Logo', 1.5);
+                    await setPropertyValue(props.preview, 'Sponsor Logo', previousSponsorLogo, modificationsRef.current);
+
+                    const { additionalPreviewRefs } = props;
+                    if (additionalPreviewRefs?.current) {
+                        await Promise.all(
+                            Object.keys(additionalPreviewRefs.current).map(async (key) => {
+                                const preview = additionalPreviewRefs.current[key];
+                                if (preview && typeof preview.loadTemplate === 'function') {
+                                    try {
+                                        await ensureElementVisibility(preview, 'Sponsor Logo', 1.5);
+                                        await setPropertyValue(preview, 'Sponsor Logo', previousSponsorLogo, modificationsRef.current);
+                                    } catch (previewErr) {
+                                        console.error('Error restoring sponsor logo in additional preview:', previewErr);
+                                    }
+                                }
+                            })
+                        );
+                    }
+                } catch (err) {
+                    console.error('Error restoring sponsor logo:', err);
+                }
+            }
+        }
+    };
 
     // fetch Teams
     const fetchTeams = React.useCallback(async () => {
@@ -476,17 +589,46 @@ export const SettingsPanel = (props) => {
         await fetchSponsorImages();
     }
 
+        // Safari detection
+        const isSafari = () => {
+            const ua = navigator.userAgent.toLowerCase();
+            return ua.indexOf('safari') !== -1 && ua.indexOf('chrome') === -1;
+        };
+    
+
     // handle front image select for players
     const handleFrontImage = async (event) => {
         setFrontImg(event.target.src);
         setFrontImgPopupOpen(false);
         try {
+            // Handle main preview
             await ensureElementVisibility(props.preview, 'Front Image', 1.5);
-            await setPropertyValue(props.preview, 'Front Image', event.target.src, modificationsRef.current);
-        } catch (err) {
-            console.error('Error :', err);
-        }
+            const imageUrl = isSafari() 
+                ? `${event.target.src}${event.target.src.includes('?') ? '&' : '?'}cache=${Date.now()}`
+                : event.target.src;
+            await setPropertyValue(props.preview, 'Front Image', imageUrl, modificationsRef.current);
 
+            // Handle all additional previews
+            const { additionalPreviewRefs } = props;
+            if (additionalPreviewRefs?.current) {
+                // Process all previews in parallel
+                await Promise.all(
+                    Object.keys(additionalPreviewRefs.current).map(async (key) => {
+                        const preview = additionalPreviewRefs.current[key];
+                        if (preview && typeof preview.loadTemplate === 'function') {
+                            try {
+                                await ensureElementVisibility(preview, 'Front Image', 1.5);
+                                await setPropertyValue(preview, 'Front Image', imageUrl, modificationsRef.current);
+                            } catch (previewErr) {
+                                console.error('Error updating additional preview:', previewErr);
+                            }
+                        }
+                    })
+                );
+            }
+        } catch (err) {
+            console.error('Error:', err);
+        }
     };
 
     // handle team logo left changes for teams
@@ -498,11 +640,47 @@ export const SettingsPanel = (props) => {
         }
         setTeamLogoUrlLeft(event.image);
         try {
+            // Fetch league logo after team selection
+            const leagueLogo = await fetchLeagueLogo(event.leagueName);
+            
             await ensureElementVisibility(props.preview, 'teamLogoLeft', 1.5);
-            await setPropertyValue(props.preview, 'teamLogoLeft', event.image, modificationsRef.current);
+            
+            const imageUrl = isSafari() 
+                ? `${event.image}${event.image.includes('?') ? '&' : '?'}cache=${Date.now()}`
+                : event.image;
 
+            await setPropertyValue(props.preview, 'teamLogoLeft', imageUrl, modificationsRef.current);
             await ensureElementVisibility(props.preview, 'LeagueName', 1.5);
             await setPropertyValue(props.preview, 'LeagueName', event.league, modificationsRef.current);
+            await ensureElementVisibility(props.preview, 'teamName1', 1.5);
+            await setPropertyValue(props.preview, 'teamName1', event.name, modificationsRef.current);
+            await ensureElementVisibility(props.preview, 'LeagueLogo', 1.5);
+            await setPropertyValue(props.preview, 'LeagueLogo', leagueLogo, modificationsRef.current);
+
+            // Handle all additional previews
+            const { additionalPreviewRefs } = props;
+            if (additionalPreviewRefs?.current) {
+                // Process all previews in parallel
+                await Promise.all(
+                    Object.keys(additionalPreviewRefs.current).map(async (key) => {
+                        const preview = additionalPreviewRefs.current[key];
+                        if (preview && typeof preview.loadTemplate === 'function') {
+                            try {
+                                await ensureElementVisibility(preview, 'teamLogoLeft', 1.5);
+                                await setPropertyValue(preview, 'teamLogoLeft', imageUrl, modificationsRef.current);
+                                await ensureElementVisibility(preview, 'teamName1', 1.5);
+                                await setPropertyValue(preview, 'teamName1', event.name, modificationsRef.current);                    
+                                await ensureElementVisibility(preview, 'LeagueName', 1.5);
+                                await setPropertyValue(preview, 'LeagueName', event.league, modificationsRef.current);
+                                await ensureElementVisibility(preview, 'LeagueLogo', 1.5);
+                                await setPropertyValue(preview, 'LeagueLogo', leagueLogo, modificationsRef.current);
+                            } catch (previewErr) {
+                                console.error('Error updating additional preview:', previewErr);
+                            }
+                        }
+                    })
+                );
+            }
         } catch (err) {
             console.error('Error :', err);
         }
@@ -510,17 +688,55 @@ export const SettingsPanel = (props) => {
 
     // handle team logo right changes for teams
     const handleTeamLogoRight = async (event) => {
-        if (!event?.image) {
-            setTeamLogoUrlRight('');
-            console.error('No image provided');
-            return;
-        }
-        setTeamLogoUrlRight(event.image);
         try {
+            if (!event?.image) {
+                setTeamLogoUrlRight('');
+                return;
+            }
+
+            setTeamLogoUrlRight(event.image);
+            
+            // Fetch league logo after team selection
+            const leagueLogo = await fetchLeagueLogo(event.leagueName);
+            console.log(leagueLogo)
             await ensureElementVisibility(props.preview, 'teamLogoRight', 1.5);
-            await setPropertyValue(props.preview, 'teamLogoRight', event.image, modificationsRef.current);
+            
+            const imageUrl = isSafari() 
+                ? `${event.image}${event.image.includes('?') ? '&' : '?'}cache=${Date.now()}`
+                : event.image;
+            
+            await setPropertyValue(props.preview, 'teamLogoRight', imageUrl, modificationsRef.current);
+            await ensureElementVisibility(props.preview, 'LeagueName', 1.5);
+            await setPropertyValue(props.preview, 'LeagueName', event.league, modificationsRef.current);
+            await ensureElementVisibility(props.preview, 'teamName1', 1.5);
+            await setPropertyValue(props.preview, 'teamName1', event.name, modificationsRef.current);
+            await ensureElementVisibility(props.preview, 'LeagueLogo', 1.5);
+            await setPropertyValue(props.preview, 'LeagueLogo', leagueLogo, modificationsRef.current);
+
+            const { additionalPreviewRefs } = props;
+            if (additionalPreviewRefs?.current) {
+                await Promise.all(
+                    Object.keys(additionalPreviewRefs.current).map(async (key) => {
+                        const preview = additionalPreviewRefs.current[key];
+                        if (preview && typeof preview.loadTemplate === 'function') {
+                            try {
+                                await ensureElementVisibility(preview, 'teamLogoRight', 1.5);
+                                await setPropertyValue(preview, 'teamLogoRight', imageUrl, modificationsRef.current);
+                                await ensureElementVisibility(props.preview, 'LeagueName', 1.5);
+                                await setPropertyValue(props.preview, 'LeagueName', event.league, modificationsRef.current);
+                                await ensureElementVisibility(props.preview, 'teamName1', 1.5);
+                                await setPropertyValue(props.preview, 'teamName1', event.name, modificationsRef.current);
+                                await ensureElementVisibility(preview, 'LeagueLogo', 1.5);
+                                await setPropertyValue(preview, 'LeagueLogo', leagueLogo, modificationsRef.current);
+                            } catch (previewErr) {
+                                console.error('Error updating additional preview:', previewErr);
+                            }
+                        }
+                    })
+                );
+            }
         } catch (err) {
-            console.error('Error :', err);
+            console.error('Error:', err);
         }
     };
 
@@ -536,22 +752,40 @@ export const SettingsPanel = (props) => {
         formData.append('file', selectedFile);
 
         try {
-            const res = await fetch('https://rss-scraper.automadic.io/api/upload-image', {
+            const res = await fetch('/api/upload', {
                 method: 'POST',
                 body: formData,
             });
+            console.log(res)
             if (res.ok) {
                 const resData = await res.json();
-                if (resData.image_url) {
                     try {
+                        const proxyUrl = `https://rss-scraper.automadic.io/api/proxy-image?url=${encodeURIComponent(resData.image_url)}`;
                         await ensureElementVisibility(props.preview, sourceName, 1.5);
-                        await setPropertyValue(props.preview, sourceName, resData.image_url, modificationsRef.current);
+                        await setPropertyValue(props.preview, sourceName, proxyUrl, modificationsRef.current);
+                        const { additionalPreviewRefs } = props;
+                        if (additionalPreviewRefs?.current) {
+                            // Process all previews in parallel
+                            await Promise.all(
+                                Object.keys(additionalPreviewRefs.current).map(async (key) => {
+                                    const preview = additionalPreviewRefs.current[key];
+                                    if (preview && typeof preview.loadTemplate === 'function') {
+                                        try {
+                                            await ensureElementVisibility(preview, sourceName, 1.5);
+                                            await setPropertyValue(preview, sourceName, proxyUrl, modificationsRef.current);
+                                        } catch (previewErr) {
+                                            console.error('Error updating additional preview:', previewErr);
+                                        }
+                                    }
+                                })
+                            );
+                        }
+
                     } catch (err) {
                         console.error('Error:', err);
                     } finally {
                         setLoadingStates(prev => ({ ...prev, [sourceName]: false }));
                     }
-                }
             } else {
                 alert('File upload failed');
                 setLoadingStates(prev => ({ ...prev, [sourceName]: false }));
@@ -562,7 +796,7 @@ export const SettingsPanel = (props) => {
         }
     };
 
-    // handle sponsor logo
+
     const handleSponsors = async (event, n) => {
         if (!n?.image) {
             setSponsorLogo('');
@@ -600,7 +834,30 @@ export const SettingsPanel = (props) => {
                 if (resData.image_url) {
                     // Once uploaded, set the image URL to the preview
                     await ensureElementVisibility(props.preview, 'Sponsor Logo', 1.5);
-                    await setPropertyValue(props.preview, 'Sponsor Logo', resData.image_url, modificationsRef.current);
+                    
+                    const imageUrl = isSafari() 
+                        ? `${resData.image_url}${resData.image_url.includes('?') ? '&' : '?'}cache=${Date.now()}`
+                        : resData.image_url;
+
+                    await setPropertyValue(props.preview, 'Sponsor Logo', imageUrl, modificationsRef.current);
+                    
+                    const { additionalPreviewRefs } = props;
+                    if (additionalPreviewRefs?.current) {
+                        // Process all previews in parallel
+                        await Promise.all(
+                            Object.keys(additionalPreviewRefs.current).map(async (key) => {
+                                const preview = additionalPreviewRefs.current[key];
+                                if (preview && typeof preview.loadTemplate === 'function') {
+                                    try {
+                                        await ensureElementVisibility(preview, 'Sponsor Logo', 1.5);
+                                        await setPropertyValue(preview, 'Sponsor Logo', imageUrl, modificationsRef.current);
+                                    } catch (previewErr) {
+                                        console.error('Error updating additional preview:', previewErr);
+                                    }
+                                }
+                            })
+                        );
+                    }
                 }
             } else {
                 alert('File upload failed');
@@ -665,14 +922,69 @@ export const SettingsPanel = (props) => {
         setInitialValues();
     }, [setInitialValues]);
 
-    // Function to handle text changes and reset if input is cleared
-    const handleTextChange = (sourceName) => (e) => {
-        const newValue = e.target.value;
-        setTextValues((prevValues) => {
-            const updatedValues = { ...prevValues, [sourceName]: newValue };
-            setPropertyValue(props.preview, sourceName, newValue, modificationsRef.current);
-            return updatedValues;
+    useEffect(() => {
+        // Initialize selectedTemplates with all templates set to true
+        if (props.additionalPreviewRefs?.current) {
+            const initialSelectedState = {};
+            Object.keys(props.additionalPreviewRefs.current).forEach(key => {
+                initialSelectedState[key] = true;
+            });
+            setSelectedTemplates(initialSelectedState);
+        }
+    }, [props.additionalPreviewRefs]);
+
+    const handleTemplateToggle = (templateKey) => {
+        setSelectedTemplates(prev => ({
+            ...prev,
+            [templateKey]: !prev[templateKey]
+        }));
+    };
+
+    const getSelectedPreviewRefs = () => {
+        const selected = {};
+        Object.keys(selectedTemplates).forEach(key => {
+            if (selectedTemplates[key]) {
+                selected[key] = props.additionalPreviewRefs.current[key];
+            }
         });
+        return { current: selected };
+    };
+
+    // Function to handle text changes and reset if input is cleared
+    const handleTextChange = (name) => (event) => {
+        const value = event.target.value;
+        setTextValues((prev) => ({ ...prev, [name]: value }));
+        
+        // Debounce the preview update to prevent rapid re-renders
+        if (updateTimeoutRef.current) {
+            clearTimeout(updateTimeoutRef.current);
+        }
+        
+        updateTimeoutRef.current = setTimeout(async () => {
+            try {
+                await ensureElementVisibility(props.preview, name, 1.5);
+                await setPropertyValue(props.preview, name, value, modificationsRef.current);
+                
+                const { additionalPreviewRefs } = props;
+                if (additionalPreviewRefs?.current) {
+                    await Promise.all(
+                        Object.keys(additionalPreviewRefs.current).map(async (key) => {
+                            const preview = additionalPreviewRefs.current[key];
+                            if (preview && typeof preview.loadTemplate === 'function') {
+                                try {
+                                    await ensureElementVisibility(preview, name, 1.5);
+                                    await setPropertyValue(preview, name, value, modificationsRef.current);
+                                } catch (previewErr) {
+                                    console.error('Error updating additional preview:', previewErr);
+                                }
+                            }
+                        })
+                    );
+                }
+            } catch (err) {
+                console.error('Error updating text:', err);
+            }
+        }, 300); // 300ms debounce delay
     };
 
     // get teams and player images as well as the front pictures at the first load 
@@ -701,6 +1013,7 @@ export const SettingsPanel = (props) => {
     }
 
     const handlePlayerImage = async (number, event) => {
+
         if (!event?.playerImage) {
             setPlayerImageUrls(prev => ({ ...prev, [number]: '' }));
             console.error('No image provided');
@@ -710,11 +1023,45 @@ export const SettingsPanel = (props) => {
         setPlayerImageUrls(prev => ({ ...prev, [number]: event.playerImage }));
         try {
             await ensureElementVisibility(props.preview, `playerImage${number}`, 1.5);
-            await setPropertyValue(props.preview, `playerImage${number}`, event.playerImage, modificationsRef.current);
+            const imageUrl = isSafari() 
+                ? `${event.playerImage}${event.playerImage.includes('?') ? '&' : '?'}cache=${Date.now()}`
+                : event.playerImage;
+            await setPropertyValue(props.preview, `playerImage${number}`, imageUrl, modificationsRef.current);
             await ensureElementVisibility(props.preview, `playerNumber${number}`, 1.5);
             await setPropertyValue(props.preview, `playerNumber${number}`, event.positionAndNumber, modificationsRef.current);
             await ensureElementVisibility(props.preview, `playername${number}`, 1.5);
             await setPropertyValue(props.preview, `playername${number}`, event.name, modificationsRef.current);
+            await ensureElementVisibility(props.preview, `playerfirstname${number}`, 1.5);
+            await setPropertyValue(props.preview, `playerfirstname${number}`, event.firstName, modificationsRef.current);
+            await ensureElementVisibility(props.preview, `playerlastname${number}`, 1.5);
+            await setPropertyValue(props.preview, `playerlastname${number}`, event.lastName, modificationsRef.current);
+
+            const { additionalPreviewRefs } = props;
+            if (additionalPreviewRefs?.current) {
+                // Process all previews in parallel
+                await Promise.all(
+                    Object.keys(additionalPreviewRefs.current).map(async (key) => {
+                        const preview = additionalPreviewRefs.current[key];
+                        if (preview && typeof preview.loadTemplate === 'function') {
+                            try {
+                                await ensureElementVisibility(preview, `playerImage${number}`, 1.5);
+                                await setPropertyValue(preview, `playerImage${number}`, imageUrl, modificationsRef.current);
+                                await ensureElementVisibility(preview, `playerNumber${number}`, 1.5);
+                                await setPropertyValue(preview, `playerNumber${number}`, event.positionAndNumber, modificationsRef.current);
+                                await ensureElementVisibility(preview, `playername${number}`, 1.5);
+                                await setPropertyValue(preview, `playername${number}`, event.name, modificationsRef.current);
+                                await ensureElementVisibility(preview, `playerfirstname${number}`, 1.5);
+                                await setPropertyValue(preview, `playerfirstname${number}`, event.firstName, modificationsRef.current);
+                                await ensureElementVisibility(preview, `playerlastname${number}`, 1.5);
+                                await setPropertyValue(preview, `playerlastname${number}`, event.lastName, modificationsRef.current);                    
+                            } catch (previewErr) {
+                                console.error('Error updating additional preview:', previewErr);
+                            }
+                        }
+                    })
+                );
+            }
+
         } catch (err) {
             console.error('Error:', err);
         }
@@ -763,7 +1110,10 @@ export const SettingsPanel = (props) => {
                         label={`Select Player Image ${number}`}
                         inputProps={{
                             ...params.inputProps,
-                            autoComplete: 'new-password', // disable autocomplete and autofill
+                            autoComplete: 'off',
+                            autoCorrect: 'off',
+                            autoCapitalize: 'off',
+                            spellCheck: 'false'
                         }}
                     />
                 )}
@@ -785,22 +1135,21 @@ export const SettingsPanel = (props) => {
         elements = props.preview.state.elements[0].elements;
     }
 
-    console.log(elements)
+    console.log(elements);
 
     return (
         <div>
-            <CreateButton templateNames={templateNames} preview={props.preview} />
+            <CreateButton
+                templateNames={templateNames}
+                additionalPreviewRefs={getSelectedPreviewRefs()}
+                preview={props.preview}
+            />
             <div className={styles.group}>
-
-
-
                 {elements.map((element) => {
                     if (!element.source.name) return null;
                     const playerImageMatch = element.source.name && element.source.name.match(/^playerImage(\d+)$/);
 
                     switch (element.source.type) {
-
-
                         case 'text':
                             return (
                                 <div key={element.source.id}>
@@ -810,6 +1159,22 @@ export const SettingsPanel = (props) => {
                                         value={textValues[element.source.name] || ''}
                                         onFocus={async () => {
                                             await ensureElementVisibility(props.preview, element.source.name, 1.5);
+                                            const { additionalPreviewRefs } = props;
+                                            if (additionalPreviewRefs?.current) {
+                                                // Process all previews in parallel
+                                                await Promise.all(
+                                                    Object.keys(additionalPreviewRefs.current).map(async (key) => {
+                                                        const preview = additionalPreviewRefs.current[key];
+                                                        if (preview && typeof preview.loadTemplate === 'function') {
+                                                            try {
+                                                                await ensureElementVisibility(preview, element.source.name, 1.5);
+                                                            } catch (previewErr) {
+                                                                console.error('Error updating additional preview:', previewErr);
+                                                            }
+                                                        }
+                                                    })
+                                                );
+                                            }
                                         }}
                                         onChange={handleTextChange(element.source.name)}
                                         multiline
@@ -818,14 +1183,6 @@ export const SettingsPanel = (props) => {
                                     />
                                 </div>
                             );
-
-
-
-
-
-
-
-
                         case 'image':
                         case 'video':
                             if (element.source.name == "Front Image") {
@@ -845,15 +1202,6 @@ export const SettingsPanel = (props) => {
 
                                 return (
                                     <>
-
-
-
-
-
-
-
-
-
                                         <Autocomplete
                                             id="sponsor-image"
                                             sx={{
@@ -873,9 +1221,9 @@ export const SettingsPanel = (props) => {
                                                         borderWidth: '2px',
                                                     },
                                                 },
-                                                '& .MuiAutocomplete-option': {  // Added this selector
+                                                '& .MuiAutocomplete-option': {  
                                                     '&:hover': {
-                                                        backgroundColor: '#3B82F6 !important', // Added !important to override Material-UI defaults
+                                                        backgroundColor: '#3B82F6 !important', 
                                                         color: 'white !important',
                                                     },
                                                     '&[aria-selected="true"]': {
@@ -918,28 +1266,31 @@ export const SettingsPanel = (props) => {
                                                     placeholder="Select a sponsor logo"
                                                     inputProps={{
                                                         ...params.inputProps,
-                                                        autoComplete: 'new-password',
+                                                        autoComplete: 'off',
+                                                        autoCorrect: 'off',
+                                                        autoCapitalize: 'off',
+                                                        spellCheck: 'false'
                                                     }}
                                                 />
                                             )}
                                         />
-
-
-
-
-
-
-
-
-
-
-
                                         {sponsorLogo && (
                                             <img
                                                 src={sponsorLogo ?? 'https://placehold.co/416x277.png?text=No%20image'}
                                                 className="img-preview"
                                             />
                                         )}
+                                    <div style={{ marginTop: '10px' }}>
+                                         <label style={{display: "flex", alignItems: "center"}}>
+                                            <input
+                                                style={{margin: '0 12px 0 0', width: 'fit-content'}}
+                                                type="checkbox"
+                                                checked={isSponsorActive}
+                                                onChange={handleSponsorToggle}
+                                            />
+                                            Show Sponsor Logo
+                                        </label>
+                                    </div>
                                     </>
                                 )
                             }
@@ -998,7 +1349,10 @@ export const SettingsPanel = (props) => {
                                                     label="Select Team Logo Left"
                                                     inputProps={{
                                                         ...params.inputProps,
-                                                        autoComplete: 'new-password', // disable autocomplete and autofill
+                                                        autoComplete: 'off',
+                                                        autoCorrect: 'off',
+                                                        autoCapitalize: 'off',
+                                                        spellCheck: 'false'
                                                     }}
                                                 />
                                             )}
@@ -1077,7 +1431,10 @@ export const SettingsPanel = (props) => {
                                                     label="Select Team Logo Right"
                                                     inputProps={{
                                                         ...params.inputProps,
-                                                        autoComplete: '', // disable autocomplete and autofill
+                                                        autoComplete: 'off',
+                                                        autoCorrect: 'off',
+                                                        autoCapitalize: 'off',
+                                                        spellCheck: 'false'
                                                     }}
                                                 />
                                             )}
@@ -1145,9 +1502,41 @@ export const SettingsPanel = (props) => {
                                                         <textarea
                                                             value={element.source.text}
                                                             onFocus={async () => {
+                                                                const { additionalPreviewRefs } = props;
+                                                                if (additionalPreviewRefs?.current) {
+                                                                    // Process all previews in parallel
+                                                                    await Promise.all(
+                                                                        Object.keys(additionalPreviewRefs.current).map(async (key) => {
+                                                                            const preview = additionalPreviewRefs.current[key];
+                                                                            if (preview && typeof preview.loadTemplate === 'function') {
+                                                                                try {
+                                                                                    await ensureElementVisibility(preview, element.source.name, 1.5);
+                                                                                } catch (previewErr) {
+                                                                                    console.error('Error updating additional preview:', previewErr);
+                                                                                }
+                                                                            }
+                                                                        })
+                                                                    );
+                                                                }
                                                                 await ensureElementVisibility(props.preview, element.source.name, 1.5);
                                                             }}
                                                             onChange={async (e) => {
+                                                                const { additionalPreviewRefs } = props;
+                                                                if (additionalPreviewRefs?.current) {
+                                                                    // Process all previews in parallel
+                                                                    await Promise.all(
+                                                                        Object.keys(additionalPreviewRefs.current).map(async (key) => {
+                                                                            const preview = additionalPreviewRefs.current[key];
+                                                                            if (preview && typeof preview.loadTemplate === 'function') {
+                                                                                try {
+                                                                                    await setPropertyValue(preview, element.source.name, e.target.value, modificationsRef.current);
+                                                                                } catch (previewErr) {
+                                                                                    console.error('Error updating additional preview:', previewErr);
+                                                                                }
+                                                                            }
+                                                                        })
+                                                                    );
+                                                                }
                                                                 await setPropertyValue(props.preview, element.source.name, e.target.value, modificationsRef.current);
                                                             }}
                                                         />
@@ -1188,46 +1577,22 @@ export const SettingsPanel = (props) => {
                                                                 onKeyUp={(event) => {
                                                                     handleSearchTeamLogo(event)
                                                                 }}
-                                                                renderOption={(props, option, { index }) => {
-                                                                    if (index === teamLogos.length) {
-                                                                        // Render Load More button as the last option
-                                                                        return (
-                                                                            <Box component="li" {...props} sx={{ display: 'flex', justifyContent: 'center' }}>
-                                                                                <Button
-                                                                                    onClick={handleLoadMore}
-                                                                                    disabled={loadingMore}
-                                                                                    style={{ width: '100%' }}
-                                                                                >
-                                                                                    {loadingMore ? 'Loading...' : 'Load More'}
-                                                                                </Button>
-                                                                            </Box>
-                                                                        );
-                                                                    }
-
-                                                                    return (
-                                                                        <Box
-                                                                            component="li"
-                                                                            sx={{ '& > img': { mr: 2, flexShrink: 0 } }}
-                                                                            {...props}
-                                                                        >
-                                                                            <img
-                                                                                loading="lazy"
-                                                                                width="20"
-                                                                                srcSet={option.image}
-                                                                                src={option.image}
-                                                                                alt=""
-                                                                            />
-                                                                            {option.name}
-                                                                        </Box>
-                                                                    );
-                                                                }}
+                                                                renderOption={(props, option) => (
+                                                                    <Box component="li" {...props} sx={{ display: 'flex', alignItems: 'center' }}>
+                                                                        <img loading="lazy" width="20" srcSet={option.image} src={option.image} alt="" />
+                                                                        {option.name}
+                                                                    </Box>
+                                                                )}
                                                                 renderInput={(params) => (
                                                                     <TextField
                                                                         {...params}
                                                                         label="Select Team Logo Left"
                                                                         inputProps={{
                                                                             ...params.inputProps,
-                                                                            autoComplete: 'new-password', // disable autocomplete and autofill
+                                                                            autoComplete: 'off',
+                                                                            autoCorrect: 'off',
+                                                                            autoCapitalize: 'off',
+                                                                            spellCheck: 'false'
                                                                         }}
                                                                     />
                                                                 )}
@@ -1254,46 +1619,22 @@ export const SettingsPanel = (props) => {
                                                                 onKeyUp={(event) => {
                                                                     handleSearchTeamLogo(event)
                                                                 }}
-                                                                renderOption={(props, option, { index }) => {
-                                                                    if (index === teamLogos.length) {
-                                                                        // Render Load More button as the last option
-                                                                        return (
-                                                                            <Box component="li" {...props} sx={{ display: 'flex', justifyContent: 'center' }}>
-                                                                                <Button
-                                                                                    onClick={handleLoadMore}
-                                                                                    disabled={loadingMore}
-                                                                                    style={{ width: '100%' }}
-                                                                                >
-                                                                                    {loadingMore ? 'Loading...' : 'Load More'}
-                                                                                </Button>
-                                                                            </Box>
-                                                                        );
-                                                                    }
-
-                                                                    return (
-                                                                        <Box
-                                                                            component="li"
-                                                                            sx={{ '& > img': { mr: 2, flexShrink: 0 } }}
-                                                                            {...props}
-                                                                        >
-                                                                            <img
-                                                                                loading="lazy"
-                                                                                width="20"
-                                                                                srcSet={option.image}
-                                                                                src={option.image}
-                                                                                alt=""
-                                                                            />
-                                                                            {option.name}
-                                                                        </Box>
-                                                                    );
-                                                                }}
+                                                                renderOption={(props, option) => (
+                                                                    <Box component="li" {...props} sx={{ display: 'flex', alignItems: 'center' }}>
+                                                                        <img loading="lazy" width="20" srcSet={option.image} src={option.image} alt="" />
+                                                                        {option.name}
+                                                                    </Box>
+                                                                )}
                                                                 renderInput={(params) => (
                                                                     <TextField
                                                                         {...params}
                                                                         label="Select Team Logo Right"
                                                                         inputProps={{
                                                                             ...params.inputProps,
-                                                                            autoComplete: '', // disable autocomplete and autofill
+                                                                            autoComplete: 'off',
+                                                                            autoCorrect: 'off',
+                                                                            autoCapitalize: 'off',
+                                                                            spellCheck: 'false'
                                                                         }}
                                                                     />
                                                                 )}
@@ -1385,7 +1726,32 @@ export const SettingsPanel = (props) => {
                             return null;
                     }
                 })}
-
+            {props.additionalPreviewRefs?.current && (
+                <div className={styles.templateSelectionContainer}>
+                {
+                    props.additionalPreviewRefs.current.length > 0 && (
+                        <Typography variant="h6" gutterBottom>
+                            Select Additional Templates to Render
+                        </Typography>
+                    )
+                }
+                    <div className={styles.templateSwitches}>
+                        {Object.keys(props.additionalPreviewRefs.current).map((key) => (
+                            <FormControlLabel
+                                key={key}
+                                control={
+                                    <Switch
+                                        checked={selectedTemplates[key] || false}
+                                        onChange={() => handleTemplateToggle(key)}
+                                        name={key}
+                                    />
+                                }
+                                label={`Template ${key.split('_')[1]}`}
+                            />
+                        ))}
+                    </div>
+                </div>
+            )}
                 <Dialog
                     open={frontImgPopupOpen}
                     onClose={() => setFrontImgPopupOpen(false)}

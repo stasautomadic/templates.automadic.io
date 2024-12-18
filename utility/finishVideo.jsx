@@ -1,4 +1,4 @@
-export async function finishVideo(preview , userId , templateNames) {
+export async function finishVideo(preview , userId , templateNames , additionalPreviewRefs) {
   const response = await fetch('/api/videos', {
       method: 'POST',
       headers: {

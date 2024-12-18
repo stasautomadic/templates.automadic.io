@@ -22,17 +22,25 @@ function DetailPage() {
   return (
     <>
       <Head>
-        <title>Detail Page</title>
-        <meta name="description" content={`Detail page for ID ${id}`} />
+        <title>Template Editor</title>
+        <meta name="description" content={`Edit template ${id}`} />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
-      <div className="flex h-screen">
-      <Sidebar setIsOpen={setIsOpen} isOpen={isSidebarOpen} />
-       <div className="flex-1 flex flex-col w-[80%]">
-        <Header toggleSidebar={toggleSidebar} />
-         <main className="flex-1 overflow-y-auto bg-gray-100 p-6">
-            {id ? <Detail id={id} /> : <p>Loading...</p>}
+      <div className="flex h-screen bg-gray-50">
+        <Sidebar setIsOpen={setIsOpen} isOpen={isSidebarOpen} />
+        <div className="flex-1 flex flex-col md:ml-10">
+          <Header toggleSidebar={toggleSidebar} />
+          <main className="flex-1 overflow-hidden pt-16 md:pt-0">
+            {id ? (
+              <div className="h-full">
+                <Detail id={id} />
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-full">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+              </div>
+            )}
           </main>
         </div>
       </div>
